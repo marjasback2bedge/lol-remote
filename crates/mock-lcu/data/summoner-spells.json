@@ -1,0 +1,12 @@
+[
+  { "id": 1, "name": "淨化", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_boost.png", "gameModes": ["CLASSIC", "ARAM"] },
+  { "id": 3, "name": "虛弱", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_Exhaust.png", "gameModes": ["CLASSIC", "ARAM"] },
+  { "id": 4, "name": "閃現", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_flash.png", "gameModes": ["CLASSIC", "ARAM"] },
+  { "id": 6, "name": "鬼步", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_haste.png", "gameModes": ["CLASSIC", "ARAM"] },
+  { "id": 7, "name": "治癒", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_heal.png", "gameModes": ["CLASSIC", "ARAM"] },
+  { "id": 11, "name": "懲戒", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_smite.png", "gameModes": ["CLASSIC"] },
+  { "id": 12, "name": "傳送", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_teleport.png", "gameModes": ["CLASSIC"] },
+  { "id": 14, "name": "點燃", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/SummonerIgnite.png", "gameModes": ["CLASSIC", "ARAM"] },
+  { "id": 21, "name": "光盾", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/SummonerBarrier.png", "gameModes": ["CLASSIC", "ARAM"] },
+  { "id": 32, "name": "雪球", "iconPath": "/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_Mark.png", "gameModes": ["ARAM"] }
+]

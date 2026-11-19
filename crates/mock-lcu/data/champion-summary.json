@@ -1,0 +1,23 @@
+[
+  { "id": -1, "name": "無", "alias": "None", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/-1.png" },
+  { "id": 1, "name": "安妮", "alias": "Annie", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/1.png" },
+  { "id": 11, "name": "易大師", "alias": "MasterYi", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/11.png" },
+  { "id": 17, "name": "提摩", "alias": "Teemo", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/17.png" },
+  { "id": 22, "name": "艾希", "alias": "Ashe", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/22.png" },
+  { "id": 51, "name": "凱特琳", "alias": "Caitlyn", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/51.png" },
+  { "id": 54, "name": "墨菲特", "alias": "Malphite", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/54.png" },
+  { "id": 55, "name": "卡特蓮娜", "alias": "Katarina", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/55.png" },
+  { "id": 64, "name": "李星", "alias": "LeeSin", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/64.png" },
+  { "id": 67, "name": "汎", "alias": "Vayne", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/67.png" },
+  { "id": 81, "name": "伊澤瑞爾", "alias": "Ezreal", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/81.png" },
+  { "id": 86, "name": "蓋倫", "alias": "Garen", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/86.png" },
+  { "id": 89, "name": "雷歐娜", "alias": "Leona", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/89.png" },
+  { "id": 99, "name": "拉克絲", "alias": "Lux", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/99.png" },
+  { "id": 103, "name": "阿璃", "alias": "Ahri", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/103.png" },
+  { "id": 117, "name": "露璐", "alias": "Lulu", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/117.png" },
+  { "id": 122, "name": "達瑞斯", "alias": "Darius", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/122.png" },
+  { "id": 157, "name": "犽宿", "alias": "Yasuo", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/157.png" },
+  { "id": 222, "name": "吉茵珂絲", "alias": "Jinx", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/222.png" },
+  { "id": 238, "name": "劫", "alias": "Zed", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/238.png" },
+  { "id": 412, "name": "瑟雷西", "alias": "Thresh", "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/412.png" }
+]
