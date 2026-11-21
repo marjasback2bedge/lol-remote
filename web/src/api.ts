@@ -1,6 +1,6 @@
 const COOKIE = "lolr_token";
 
-/** Moves `?t=<token>` from the URL into a cookie (spec §7.8). */
+/** Moves `?t=<token>` from the URL into a cookie (spec §7.7). */
 export function adoptTokenFromUrl() {
   const url = new URL(location.href);
   const token = url.searchParams.get("t");

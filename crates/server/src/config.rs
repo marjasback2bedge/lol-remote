@@ -11,35 +11,24 @@ pub struct Config {
     /// Empty = platform default.
     pub lockfile_path: String,
     pub auth_token: String,
-    pub ntfy_server: String,
-    pub ntfy_topic: String,
     pub auto_accept: bool,
     /// Empty = system hostname.
     pub hostname: String,
-    /// Push a low-priority "match cancelled" notification.
-    pub notify_cancel: bool,
-    /// Use the LAN IP instead of `<host>.local` in notification links.
-    pub notify_use_ip: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        let mut rng = rand::thread_rng();
         Self {
             port: 3000,
             lockfile_path: String::new(),
-            auth_token: Alphanumeric.sample_string(&mut rng, 32),
-            ntfy_server: "https://ntfy.sh".into(),
-            ntfy_topic: format!("lolr-{}", Alphanumeric.sample_string(&mut rng, 24)),
+            auth_token: Alphanumeric.sample_string(&mut rand::thread_rng(), 32),
             auto_accept: false,
             hostname: String::new(),
-            notify_cancel: true,
-            notify_use_ip: false,
         }
     }
 }
 
-const HEADER: &str = "# lol-remote configuration. Keep auth_token and ntfy_topic secret.\n\n";
+const HEADER: &str = "# lol-remote configuration. Keep auth_token secret.\n\n";
 
 impl Config {
     pub fn default_path() -> anyhow::Result<PathBuf> {
@@ -63,7 +52,7 @@ impl Config {
         if config.auth_token.is_empty() {
             config.auth_token = Self::default().auth_token;
         }
-        // Persist generated values (token, topic) for keys missing from the file.
+        // Persist generated values (token) for keys missing from the file.
         let complete = toml::Table::try_from(&config)?;
         if complete.keys().any(|k| !table.contains_key(k)) || config.auth_token.len() < 16 {
             config.save(path)?;
@@ -100,11 +89,9 @@ mod tests {
         let (a, created) = Config::load_or_create(&path).unwrap();
         assert!(created);
         assert_eq!(a.auth_token.len(), 32);
-        assert!(a.ntfy_topic.starts_with("lolr-"));
         let (b, created) = Config::load_or_create(&path).unwrap();
         assert!(!created);
         assert_eq!(a.auth_token, b.auth_token);
-        assert_eq!(a.ntfy_topic, b.ntfy_topic);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -1,4 +1,4 @@
-//! HTTP API for the phone (spec §7.9). Only the operations listed here reach
+//! HTTP API for the phone (spec §7.8). Only the operations listed here reach
 //! the LCU; there is deliberately no generic proxy.
 
 use std::sync::Arc;
@@ -60,7 +60,6 @@ pub fn router() -> Router<Arc<Ctx>> {
         .route("/perks/pages", get(perk_pages))
         .route("/perks/current", post(set_perk_page))
         .route("/settings", get(get_settings).put(put_settings))
-        .route("/pair", get(pair_info))
 }
 
 /// Constant-time comparison so the token can't be guessed byte by byte.
@@ -309,18 +308,6 @@ async fn put_settings(
     ctx.update(|s| s.auto_accept = body.auto_accept);
     tracing::info!("auto accept set to {}", body.auto_accept);
     Ok(Json(body))
-}
-
-async fn pair_info(State(ctx): State<Arc<Ctx>>) -> Json<serde_json::Value> {
-    let config = ctx.config();
-    let server = config.ntfy_server.trim_end_matches('/');
-    Json(json!({
-        "ntfyServer": server,
-        "ntfyTopic": config.ntfy_topic,
-        "subscribeUrl": format!("{server}/{}", config.ntfy_topic),
-        "mdnsUrl": ctx.mdns_url,
-        "ipUrl": ctx.ip_url,
-    }))
 }
 
 #[cfg(test)]

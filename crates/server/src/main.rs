@@ -6,7 +6,6 @@ mod config;
 mod install;
 mod mdns;
 mod net;
-mod notify;
 mod pairing;
 mod state;
 mod supervisor;
@@ -153,9 +152,6 @@ async fn run(config_path: PathBuf, lockfile: Option<PathBuf>) -> anyhow::Result<
         state,
         lcu: RwLock::new(None),
         cache: RwLock::new(Cache::default()),
-        notifier: notify::Notifier::new(),
-        mdns_url: mdns_url.clone(),
-        ip_url: ip_url.clone(),
     });
 
     tokio::spawn(supervisor::run(ctx.clone(), lockfile));

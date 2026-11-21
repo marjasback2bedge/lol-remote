@@ -55,11 +55,3 @@ export type Champion = {
 export type Spell = { id: number; name: string; iconUrl: string };
 
 export type PerkPage = { id: number; name: string; isCurrent: boolean; isEditable: boolean };
-
-export type PairInfo = {
-  ntfyServer: string;
-  ntfyTopic: string;
-  subscribeUrl: string;
-  mdnsUrl: string;
-  ipUrl: string;
-};

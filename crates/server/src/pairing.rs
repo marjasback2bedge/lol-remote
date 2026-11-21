@@ -1,4 +1,4 @@
-//! Terminal pairing output (spec §7.7).
+//! Terminal pairing output (spec §7.6).
 
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
@@ -20,23 +20,12 @@ fn qr(data: &str) -> String {
 pub fn print(config: &Config, mdns_url: &str, ip_url: &str) {
     let token = &config.auth_token;
     let ip_link = format!("{ip_url}/?t={token}");
-    let ntfy_link = format!(
-        "{}/{}",
-        config.ntfy_server.trim_end_matches('/'),
-        config.ntfy_topic
-    );
     println!();
     println!("━━━━━━━━━━━━━━━━ lol-remote 配對 ━━━━━━━━━━━━━━━━");
-    println!("1) 用手機掃描以開啟遙控網頁（手機需連同一個區網）：");
+    println!("用手機掃描以開啟遙控網頁（手機需連同一個區網）：");
     println!("{}", qr(&ip_link));
     println!("   {ip_link}");
     println!("   {mdns_url}/?t={token}");
-    println!();
-    println!("2) 安裝 ntfy App，訂閱以下 topic 以接收「找到對戰」推播：");
-    println!("{}", qr(&ntfy_link));
-    println!("   伺服器：{}", config.ntfy_server);
-    println!("   Topic ：{}", config.ntfy_topic);
-    println!("   {ntfy_link}");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!();
 }

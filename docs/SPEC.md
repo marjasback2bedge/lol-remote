@@ -1,6 +1,6 @@
 # lol-remote — Spec
 
-用手機在區網內遠端操作 League of Legends 客戶端：排到隊時手機跳通知，點開內網網頁即可接受 / 拒絕、選角、Ban、選召喚師技能與符文頁。
+用手機在區網內遠端操作 League of Legends 客戶端：排到隊時內網網頁自動切換，即可在手機上接受 / 拒絕、選角、Ban、選召喚師技能與符文頁。
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 目標
 - 使用者打開 LoL 客戶端後，本機 server 自動進入運作狀態（不需手動啟動）。
-- Ready check 出現時，手機在數秒內收到推播通知。
+- Ready check 出現時，已開啟的手機網頁在數秒內自動切換到接受畫面。
 - 手機透過區網網頁完成：接受 / 拒絕、Ban、Hover、Lock in、召喚師技能、符文頁切換。
 - 單一執行檔散布，支援 macOS（優先）與 Windows。
 - 首次使用以 QR code 完成手機配對，之後零設定。
@@ -17,6 +17,7 @@
 - 自動選角 / 自動 Ban 等替玩家做決策的功能（只保留「自動接受」開關）。
 - 對外網路存取（不做 Tailscale、雲端中繼）。
 - 原生 iOS / Android App、動態島。
+- 推播通知（使用者配對時會盯著網頁，推播是多餘的）。
 - 編輯符文頁內容（只切換既有頁面）。
 - 遊戲內（in-game）任何功能。
 
@@ -32,10 +33,10 @@
 [排隊中] gameflow-phase = Matchmaking
    │
 [排到] gameflow-phase = ReadyCheck
-   ├─ 若「自動接受」開啟 → 直接 accept，仍推播告知
-   └─ 否則 → ntfy 推播「找到對戰」(按鈕：接受 / 開啟)
+   ├─ 若「自動接受」開啟 → 直接 accept
+   └─ 否則 → 網頁切換到 Ready Check 畫面
    │
-[手機] 點通知 → 開啟 http://<host>.local:3000 → 按接受
+[手機] 在已開啟的 http://<host>.local:3000 按接受
    │
 [選角] gameflow-phase = ChampSelect
    └─ 網頁即時顯示倒數、目前輪到的 action、隊伍狀態
@@ -63,7 +64,6 @@
 │   └─ server crate:                  │
 │       ├─ axum HTTP + WS  :3000 ─────┼──► 手機瀏覽器（區網）
 │       ├─ mDNS 廣播 <host>.local     │
-│       ├─ ntfy publisher ────────────┼──► ntfy.sh ──► 手機 ntfy App
 │       └─ 內嵌前端靜態檔             │
 └─────────────────────────────────────┘
 ```
@@ -77,7 +77,7 @@
 |---|---|
 | Async runtime | `tokio`（full） |
 | HTTP / WS server | `axum`（含 `ws` feature）、`tower-http`（CORS、trace） |
-| HTTP client（LCU、ntfy） | `reqwest`（`rustls-tls`、`json`） |
+| HTTP client（LCU） | `reqwest`（`rustls-tls`、`json`） |
 | LCU WebSocket | `tokio-tungstenite`（`rustls-tls-webpki-roots` 或自訂 connector） |
 | TLS 自訂設定 | `rustls` |
 | JSON | `serde`、`serde_json` |
@@ -117,7 +117,6 @@ lol-remote/
 │   │   ├── src/supervisor.rs # Idle/Active 狀態機
 │   │   ├── src/api.rs        # 給手機的 REST
 │   │   ├── src/ws.rs         # 給手機的 WS
-│   │   ├── src/notify.rs     # ntfy
 │   │   ├── src/mdns.rs
 │   │   ├── src/pairing.rs    # QR
 │   │   ├── src/install.rs    # launchd / Windows 開機啟動
@@ -219,8 +218,6 @@ lol-remote config path  # 印出設定檔路徑
 port = 3000
 lockfile_path = ""          # 空字串 = 使用平台預設
 auth_token = "<隨機 32 字元>"
-ntfy_server = "https://ntfy.sh"
-ntfy_topic = "lolr-<隨機 24 字元>"
 auto_accept = false
 hostname = ""               # 空字串 = 使用系統 hostname
 ```
@@ -240,44 +237,20 @@ Active ──(WS 斷線 / lockfile 消失)──► Idle
 
 ### 7.4 Ready check 處理
 - 收到 phase = `ReadyCheck`（或 ready-check 事件 `state == "InProgress"` 且 `playerResponse == "None"`）時：
-  - `auto_accept == true` → 立即 POST accept，推播「已自動接受」。
-  - 否則 → 推播「找到對戰」。
-- 同一次 ready check 只推播一次（用 ready check 開始時間或 phase 轉換去重）。
-- ready check 結束（被拒、有人沒接）→ 推播「配對取消」（priority low），可設定關閉。
+  - `auto_accept == true` → 立即 POST accept。
+  - 否則 → 只更新 state，由網頁顯示 Ready Check 畫面。
+- 同一次 ready check 只自動接受一次（用 phase 轉換去重）。
 
-### 7.5 ntfy 推播
-- 用 JSON 發佈避免 header 編碼問題：`POST {ntfy_server}/`
-```json
-{
-  "topic": "<ntfy_topic>",
-  "title": "找到對戰！",
-  "message": "10 秒內接受",
-  "priority": 5,
-  "tags": ["crossed_swords"],
-  "click": "http://<host>.local:3000/?t=<auth_token>",
-  "actions": [
-    { "action": "http", "label": "接受", "url": "http://<host>.local:3000/api/ready-check/accept",
-      "method": "POST", "headers": { "Authorization": "Bearer <auth_token>" }, "clear": true },
-    { "action": "view", "label": "開啟", "url": "http://<host>.local:3000/?t=<auth_token>" }
-  ]
-}
-```
-- 推播內容不得包含召喚師名稱或任何個資（ntfy.sh 是公開服務）。
-- 發送失敗只記 log，不影響主流程；timeout 3 秒。
-- 若 `.local` 解析不可用，`url` 改用偵測到的區網 IP（設定可選）。
-
-### 7.6 mDNS
+### 7.5 mDNS
 - 以 `mdns-sd` 廣播 `_http._tcp`，instance name `lol-remote`，hostname 使用系統 hostname + `.local`。
 - macOS 系統本身已提供 `<hostname>.local` 解析，mDNS 廣播為輔助（Windows 需要）。
 
-### 7.7 配對
+### 7.6 配對
 - `lol-remote pair` 與首次啟動時，在終端機印出：
   - 網址：`http://<host>.local:3000/?t=<token>` 與 `http://<LAN IP>:3000/?t=<token>`
   - 一個 QR code（內容為上述 IP 網址）
-  - ntfy topic 與訂閱 QR（`ntfy://` 或 `https://ntfy.sh/<topic>`），提示使用者在 ntfy App 訂閱
-- 網頁也提供 `/pair` 頁面（需 token）顯示 ntfy 訂閱資訊。
 
-### 7.8 安全
+### 7.7 安全
 - 只綁定 `0.0.0.0:<port>`，但所有 `/api/*` 與 `/ws` 需驗證 token：
   - Header `Authorization: Bearer <token>`，或
   - Cookie `lolr_token`（前端首次以 `?t=` 進入時寫入 cookie，並以 `history.replaceState` 移除 URL 中的 token）。
@@ -286,7 +259,7 @@ Active ──(WS 斷線 / lockfile 消失)──► Idle
 - 前端可呼叫的 LCU 操作限定為下方 API 列出的項目，**不提供任意 LCU proxy**。
 - 圖片 proxy 只允許 `/lol-game-data/assets/` 前綴。
 
-### 7.9 給手機的 HTTP API
+### 7.8 給手機的 HTTP API
 所有回應 JSON；錯誤格式 `{ "error": "message" }`。
 
 | Method | Path | 說明 |
@@ -305,7 +278,7 @@ Active ──(WS 斷線 / lockfile 消失)──► Idle
 | GET | `/assets/lcu/*path` | 代理 LCU 圖片，加 `Cache-Control: max-age=86400` |
 | GET | `/*` | 前端靜態檔（SPA fallback 到 index.html） |
 
-### 7.10 給手機的 WebSocket `/ws`
+### 7.9 給手機的 WebSocket `/ws`
 - Server → Client，JSON，每則帶 `type`：
   - `{ "type": "state", "data": State }`：連線時與任何變動時送出完整快照（簡單優先，v1 不做 diff）。
 - Client → Server：v1 不需要（操作一律走 REST）。
@@ -395,12 +368,11 @@ Rust 端在 `server` crate 定義對應 struct，`#[serde(rename_all = "camelCas
 - [ ] WS 訂閱 gameflow-phase，終端機印出階段變化。
 - 驗收：開 LoL → 進大廳 → 排隊，終端機依序印出 `Lobby → Matchmaking`。
 
-### M2 — Ready check + 通知
+### M2 — Ready check
 - [ ] Supervisor 狀態機（Idle/Connecting/Active）。
 - [ ] Ready check 偵測與去重。
-- [ ] ntfy 推播 + 通知上的「接受」按鈕可用。
 - [ ] `auto_accept`。
-- 驗收：排到隊時手機 3 秒內收到通知；從通知按接受成功；關閉並重開 LoL 後仍能運作。
+- 驗收：排到隊時終端機印出 ReadyCheck，`auto_accept` 開啟時自動接受；關閉並重開 LoL 後仍能運作。
 
 ### M3 — 內網網頁（接受）
 - [ ] axum server、token 驗證、rust-embed、`/api/state`、`/ws`。
@@ -419,7 +391,7 @@ Rust 端在 `server` crate 定義對應 struct，`#[serde(rename_all = "camelCas
 - [ ] `install` / `uninstall`（macOS 必做，Windows 次之）。
 - [ ] `caffeinate`。
 - [ ] GitHub Actions：build macOS（arm64 + x86_64 universal）與 Windows 執行檔；前端先 build 再 cargo build。
-- [ ] README：安裝、配對、ntfy 設定、已知限制、免責聲明。
+- [ ] README：安裝、配對、已知限制、免責聲明。
 
 ---
 
@@ -441,7 +413,6 @@ Rust 端在 `server` crate 定義對應 struct，`#[serde(rename_all = "camelCas
 - LCU 為非官方、未承諾穩定的 API，客戶端改版可能導致功能失效。
 - Riot 開發者政策禁止「替玩家做決策」的應用；本工具只轉發使用者在手機上的操作，「自動接受」為唯一自動化項目。公開發布前應查閱 Riot 最新的第三方應用政策。
 - 選角期間不得顯示其他玩家的名稱或戰績。
-- iOS 版 ntfy 對通知 `http` action 按鈕的支援需實測；不支援時使用者需點通知開啟網頁再按接受。
-- Ready check 僅約 10 秒，通知延遲與手機解鎖時間要算進去；建議使用者在離開座位時開啟「自動接受」。
+- Ready check 僅約 10 秒，手機網頁需保持開啟；建議使用者在離開座位時開啟「自動接受」。
 - 手機必須與電腦在同一區網。
 - Token 在區網中以明文 HTTP 傳輸，僅適用於信任的家用網路。

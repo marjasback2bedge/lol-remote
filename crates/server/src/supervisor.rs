@@ -1,5 +1,5 @@
 //! Idle → Connecting → Active state machine (spec §7.3) and LCU event
-//! handling, including ready-check notifications (spec §7.4).
+//! handling, including ready-check auto-accept (spec §7.4).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -11,7 +11,6 @@ use lcu::{Credentials, LcuClient, LcuEvent};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::{sleep, timeout, Instant};
 
-use crate::notify::Push;
 use crate::state::{now_ms, ChampSelectState, Connection, Ctx, ReadyCheckState};
 
 const RETRY_EVERY: Duration = Duration::from_secs(2);
@@ -107,8 +106,8 @@ struct Active {
     ctx: Arc<Ctx>,
     client: LcuClient,
     phase: Phase,
-    /// Set once the current ready check has been handled (notified or
-    /// auto-accepted); cleared when the phase leaves ReadyCheck.
+    /// Set once the current ready check has been handled; cleared when the
+    /// phase leaves ReadyCheck.
     ready_check_handled: bool,
 }
 
@@ -188,7 +187,7 @@ impl Active {
             return;
         }
         tracing::info!("phase: {} → {phase}", self.phase);
-        let previous = std::mem::replace(&mut self.phase, phase.clone());
+        self.phase = phase.clone();
         self.ctx.update(|s| {
             s.phase = phase.to_string();
             if phase != Phase::ReadyCheck {
@@ -199,16 +198,10 @@ impl Active {
             }
         });
 
-        match phase {
-            Phase::ReadyCheck => self.start_ready_check(),
-            _ if previous == Phase::ReadyCheck => {
-                let cancelled = matches!(phase, Phase::Matchmaking | Phase::Lobby | Phase::None);
-                if cancelled && self.ready_check_handled && self.ctx.config().notify_cancel {
-                    self.push(Push::Cancelled);
-                }
-                self.ready_check_handled = false;
-            }
-            _ => self.ready_check_handled = false,
+        if phase == Phase::ReadyCheck {
+            self.start_ready_check();
+        } else {
+            self.ready_check_handled = false;
         }
     }
 
@@ -225,7 +218,7 @@ impl Active {
         self.ctx.update(|s| s.champ_select = view);
     }
 
-    /// Notifies or auto-accepts once per ready check.
+    /// Auto-accepts (if enabled) once per ready check.
     fn start_ready_check(&mut self) {
         if self.ready_check_handled {
             return;
@@ -233,36 +226,13 @@ impl Active {
         self.ready_check_handled = true;
         if self.ctx.config().auto_accept {
             let client = self.client.clone();
-            let ctx = self.ctx.clone();
             tokio::spawn(async move {
                 match client.accept_ready_check().await {
-                    Ok(()) => {
-                        tracing::info!("auto-accepted ready check");
-                        let config = ctx.config();
-                        ctx.notifier
-                            .send(&config, ctx.public_url(), Push::AutoAccepted)
-                            .await;
-                    }
-                    Err(e) => {
-                        tracing::warn!("auto-accept failed: {e}");
-                        let config = ctx.config();
-                        ctx.notifier
-                            .send(&config, ctx.public_url(), Push::MatchFound)
-                            .await;
-                    }
+                    Ok(()) => tracing::info!("auto-accepted ready check"),
+                    Err(e) => tracing::warn!("auto-accept failed: {e}"),
                 }
             });
-        } else {
-            self.push(Push::MatchFound);
         }
-    }
-
-    fn push(&self, push: Push) {
-        let ctx = self.ctx.clone();
-        tokio::spawn(async move {
-            let config = ctx.config();
-            ctx.notifier.send(&config, ctx.public_url(), push).await;
-        });
     }
 }
 

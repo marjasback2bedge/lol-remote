@@ -1,4 +1,4 @@
-//! mDNS advertisement (spec §7.6). macOS already answers for `<host>.local`;
+//! mDNS advertisement (spec §7.5). macOS already answers for `<host>.local`;
 //! this mostly matters on Windows.
 
 use std::net::IpAddr;
