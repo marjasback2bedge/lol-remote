@@ -1,6 +1,5 @@
 import { api } from "./api";
 import { ChampSelect } from "./components/ChampSelect";
-import { Pair } from "./components/Pair";
 import { ReadyCheck } from "./components/ReadyCheck";
 import { Toasts } from "./components/Toasts";
 import { Toggle } from "./components/Toggle";
@@ -36,7 +35,9 @@ export function App() {
           與電腦的連線中斷，重新連線中…
         </div>
       )}
-      <main>{location.pathname === "/pair" ? <Pair /> : <Screen live={live} />}</main>
+      <main>
+        <Screen live={live} />
+      </main>
       <Toasts />
     </>
   );
@@ -98,11 +99,8 @@ function Screen({ live }: { live: Live }) {
     <section class="screen center">
       <p class="phase-chip">{PHASES[state.phase] ?? state.phase}</p>
       <h1 class="headline">{state.phase === "Matchmaking" ? "排隊中" : "已連線"}</h1>
-      <p class="muted">找到對戰時這裡會自動切換，並推播到手機。</p>
+      <p class="muted">找到對戰時這裡會自動切換。</p>
       <AutoAccept state={state} />
-      <a class="link" href="/pair">
-        通知設定
-      </a>
     </section>
   );
 }

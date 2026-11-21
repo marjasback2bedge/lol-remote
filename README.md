@@ -1,6 +1,6 @@
 # lol-remote
 
-用手機在區網內遠端操作 League of Legends 客戶端：排到隊時手機跳通知，點開內網網頁即可接受 / 拒絕、Ban、選角、選召喚師技能與切換符文頁。
+用手機在區網內遠端操作 League of Legends 客戶端：排到隊時內網網頁自動切換，即可在手機上接受 / 拒絕、Ban、選角、選召喚師技能與切換符文頁。
 
 完整規格見 [`docs/SPEC.md`](docs/SPEC.md)。
 
@@ -10,8 +10,7 @@
 LoL 客戶端 (LCU, https://127.0.0.1:<port>)
       ▲  REST + WAMP/WSS
 lol-remote（單一執行檔，常駐）
-      ├─ HTTP + WebSocket :3000 ──► 手機瀏覽器（同一區網）
-      └─ ntfy 推播 ──► ntfy.sh ──► 手機 ntfy App
+      └─ HTTP + WebSocket :3000 ──► 手機瀏覽器（同一區網）
 ```
 
 lol-remote 會監看 LoL 的 lockfile：客戶端一開啟就自動連上，關閉後回到閒置狀態等待下次開啟。
@@ -46,10 +45,7 @@ cargo build --release -p lol-remote
 lol-remote pair
 ```
 
-1. **網頁**：用手機掃第一個 QR code，開啟 `http://<區網 IP>:3000/?t=<token>`。token 會存進 cookie，之後直接開 `http://<電腦名稱>.local:3000` 即可。
-2. **推播**：安裝 [ntfy](https://ntfy.sh) App，訂閱第二個 QR code 的 topic。
-
-網頁上的「通知設定」頁（`/pair`）也會顯示 topic。
+用手機掃 QR code，開啟 `http://<區網 IP>:3000/?t=<token>`。token 會存進 cookie，之後直接開 `http://<電腦名稱>.local:3000` 即可。排隊時讓網頁保持開啟，找到對戰會自動切換到接受畫面。
 
 ## 設定檔
 
@@ -60,18 +56,14 @@ lol-remote pair
 | `port` | `3000` | 網頁埠號 |
 | `lockfile_path` | `""` | 空字串 = 平台預設路徑 |
 | `auth_token` | 隨機 32 字元 | 手機存取權杖 |
-| `ntfy_server` | `https://ntfy.sh` | 可換成自架 ntfy |
-| `ntfy_topic` | `lolr-<隨機>` | 等同密碼，請勿公開 |
 | `auto_accept` | `false` | 可在網頁切換 |
 | `hostname` | `""` | 空字串 = 系統名稱 |
-| `notify_cancel` | `true` | 配對取消時推播（低優先度） |
-| `notify_use_ip` | `false` | 通知連結改用區網 IP（`.local` 無法解析時開啟） |
 
 ## 開發
 
 ```
 crates/lcu        與 LCU 溝通：lockfile、REST、WAMP 事件、選角邏輯
-crates/server     lol-remote 執行檔：狀態機、API、WebSocket、ntfy、mDNS
+crates/server     lol-remote 執行檔：狀態機、API、WebSocket、mDNS
 crates/mock-lcu   假的 LCU（自簽 HTTPS + WSS），不用開遊戲也能測整個流程
 web/              Vite + Preact + TypeScript 前端
 ```
@@ -107,15 +99,13 @@ CI（`.github/workflows/build.yml`）會跑上述檢查，並產出 macOS univer
 
 - 所有 `/api/*`、`/ws`、`/assets/lcu/*` 都需要 token（`Authorization: Bearer` 或 `lolr_token` cookie），以 constant-time 比對。
 - LCU 的密碼與埠號不會傳給手機；手機只能呼叫上表列出的操作，沒有任意 LCU proxy；圖片 proxy 只允許 `/lol-game-data/assets/`。
-- 推播內容不含召喚師名稱或任何個資。
 - 區網內為明文 HTTP，**只適用於信任的家用網路**。
 
 ## 已知限制
 
 - LCU 是非官方、未承諾穩定的 API，客戶端改版可能讓功能失效。
 - 與 LCU 的 TLS 採用規格中的方案 B：只對 `127.0.0.1` 略過憑證驗證（尚未內建 Riot 根憑證）。
-- Ready check 只有約 10 秒，請把通知延遲與解鎖手機的時間算進去；離開座位時建議開啟「自動接受」。
-- iOS 版 ntfy 的通知按鈕（直接「接受」）需實測；不支援時請點通知開啟網頁再按接受。
+- Ready check 只有約 10 秒，排隊時請讓手機網頁保持開啟；離開座位時建議開啟「自動接受」。
 - 手機必須與電腦在同一個區網。
 - 尚未在真實客戶端上驗收（M1–M4 的驗收步驟需要實際開遊戲）。
 

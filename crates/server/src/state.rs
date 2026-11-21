@@ -11,7 +11,6 @@ use serde::Serialize;
 use tokio::sync::watch;
 
 use crate::config::Config;
-use crate::notify::Notifier;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -186,11 +185,6 @@ pub struct Ctx {
     pub state: watch::Sender<State>,
     pub lcu: RwLock<Option<LcuClient>>,
     pub cache: RwLock<Cache>,
-    pub notifier: Notifier,
-    /// `http://<host>.local:<port>`
-    pub mdns_url: String,
-    /// `http://<lan ip>:<port>`
-    pub ip_url: String,
 }
 
 impl Ctx {
@@ -204,15 +198,6 @@ impl Ctx {
 
     pub fn update(&self, f: impl FnOnce(&mut State)) {
         self.state.send_modify(f);
-    }
-
-    /// Base URL used in notifications.
-    pub fn public_url(&self) -> &str {
-        if self.config.read().unwrap().notify_use_ip {
-            &self.ip_url
-        } else {
-            &self.mdns_url
-        }
     }
 }
 

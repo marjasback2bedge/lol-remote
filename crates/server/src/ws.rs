@@ -1,4 +1,4 @@
-//! WebSocket pushing full state snapshots to the phone (spec §7.10).
+//! WebSocket pushing full state snapshots to the phone (spec §7.9).
 
 use std::sync::Arc;
 use std::time::Duration;

@@ -977,7 +977,6 @@ dependencies = [
  "notify",
  "qrcode",
  "rand 0.8.8",
- "reqwest",
  "rust-embed",
  "serde",
  "serde_json",
