@@ -53,10 +53,12 @@ jobs:
             target/aarch64-apple-darwin/release/lol-remote \
             target/x86_64-apple-darwin/release/lol-remote
           lipo -info dist/lol-remote
+          # Artifacts drop the executable bit; a tarball keeps it.
+          tar -czf dist/lol-remote-macos-universal.tar.gz -C dist lol-remote
       - uses: actions/upload-artifact@v4
         with:
           name: lol-remote-macos-universal
-          path: dist/lol-remote
+          path: dist/lol-remote-macos-universal.tar.gz
 
   build-windows:
     needs: check
@@ -77,3 +79,23 @@ jobs:
         with:
           name: lol-remote-windows
           path: target/release/lol-remote.exe
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: |
+          mkdir -p release
+          cp artifacts/lol-remote-macos-universal/lol-remote-macos-universal.tar.gz release/
+          cp artifacts/lol-remote-windows/lol-remote.exe release/lol-remote-windows.exe
+          ls -l release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

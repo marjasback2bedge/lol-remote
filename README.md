@@ -17,6 +17,20 @@ lol-remote 會監看 LoL 的 lockfile：客戶端一開啟就自動連上，關�
 
 ## 安裝
 
+### 下載預先編譯版本
+
+到 [Releases](https://github.com/marjasback2bedge/lol-remote/releases) 下載最新版：
+
+- macOS（Intel / Apple Silicon 通用）：`lol-remote-macos-universal.tar.gz`
+  ```sh
+  tar -xzf lol-remote-macos-universal.tar.gz
+  xattr -d com.apple.quarantine lol-remote   # 執行檔未簽章，需移除隔離標記
+  ./lol-remote run
+  ```
+- Windows：`lol-remote-windows.exe`（未簽章，SmartScreen 警告時選「其他資訊 → 仍要執行」）
+
+### 從原始碼編譯
+
 需要：Rust（stable）、Node.js 18+。
 
 ```sh
@@ -94,6 +108,15 @@ cd web && npm run typecheck
 ```
 
 CI（`.github/workflows/build.yml`）會跑上述檢查，並產出 macOS universal（arm64 + x86_64）與 Windows 執行檔。
+
+### 發布版本
+
+在 `main` 上推送 `v*` tag，CI 會建置並建立 GitHub Release，附上兩個執行檔：
+
+```sh
+git checkout main && git pull
+git tag v0.2.0 && git push origin v0.2.0
+```
 
 ## 安全性
 
