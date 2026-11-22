@@ -13,6 +13,15 @@ const POSITIONS: Record<string, string> = {
   utility: "輔助",
 };
 
+const GAME_MODES: Record<string, string> = {
+  CLASSIC: "召喚峽谷",
+  ARAM: "隨機單中",
+  CHERRY: "競技場",
+  URF: "阿福快打",
+  ONEFORALL: "克隆大作戰",
+  NEXUSBLITZ: "主堡突擊",
+};
+
 const TIMER_PHASES: Record<string, string> = {
   PLANNING: "宣告階段",
   BAN_PICK: "禁選階段",
@@ -57,12 +66,16 @@ export function ChampSelect({ cs, serverTime, receivedLocal }: Props) {
   const names = useMemo(() => new Map(champions.map((c) => [c.id, c.name])), [champions]);
   const lockedPick = cs.myAction?.kind === "pick" && cs.myAction.completed;
   const showGrid = !!action && !action.completed;
+  // Modes without a pick action (ARAM) assign the champion directly.
+  const assigned = !action ? cs.mySelection.championId : 0;
+  const phaseLabel = TIMER_PHASES[cs.timerPhase] ?? cs.timerPhase;
+  const modeLabel = GAME_MODES[cs.gameMode] ?? cs.gameMode;
 
   return (
     <section class="screen champ-select">
       <header class="cs-header">
         <div>
-          <div class="cs-phase">{TIMER_PHASES[cs.timerPhase] ?? cs.timerPhase}</div>
+          <div class="cs-phase">{[modeLabel, phaseLabel].filter(Boolean).join(" · ")}</div>
           <div class={`cs-turn${myTurn ? " cs-turn-mine" : ""}`}>
             {myTurn
               ? isBan
@@ -70,7 +83,9 @@ export function ChampSelect({ cs, serverTime, receivedLocal }: Props) {
                 : "輪到你選角"
               : lockedPick
                 ? `已鎖定 ${names.get(cs.myAction!.championId) ?? ""}`
-                : "等待其他玩家"}
+                : assigned > 0
+                  ? `你的英雄：${names.get(assigned) ?? ""}`
+                  : "等待其他玩家"}
           </div>
         </div>
         <div class={`cs-timer${remaining < 10_000 ? " cs-timer-low" : ""}`}>
@@ -79,6 +94,8 @@ export function ChampSelect({ cs, serverTime, receivedLocal }: Props) {
       </header>
 
       <Teams cs={cs} />
+
+      {(cs.bench || cs.rerollsRemaining !== null) && <Bench cs={cs} names={names} />}
 
       {showGrid && (
         <ChampionGrid
@@ -126,7 +143,62 @@ function Teams({ cs }: { cs: CS }) {
   );
 }
 
-type GridProps = { champions: Champion[]; isBan: boolean; myTurn: boolean; current: number };
+function Bench({ cs, names }: { cs: CS; names: Map<number, string> }) {
+  const [swapping, setSwapping] = useState(0);
+  const swap = async (id: number) => {
+    if (swapping) return;
+    setSwapping(id);
+    try {
+      await api("POST", "/champ-select/bench-swap", { championId: id });
+    } catch (e) {
+      fail(e);
+    } finally {
+      setSwapping(0);
+    }
+  };
+  const rerolls = cs.rerollsRemaining;
+
+  return (
+    <div class="bench-panel">
+      <div class="bench-head">
+        <span>替補席</span>
+        {rerolls !== null && (
+          <ActionButton
+            class="btn-secondary btn-small"
+            disabled={rerolls <= 0}
+            onClick={() => api("POST", "/champ-select/reroll")}
+          >
+            重骰（{rerolls}）
+          </ActionButton>
+        )}
+      </div>
+      {cs.bench && (
+        <div class="grid">
+          {cs.bench.map((id) => (
+            <button
+              key={id}
+              class="champ"
+              disabled={swapping !== 0}
+              aria-busy={swapping === id}
+              onClick={() => swap(id)}
+            >
+              <img src={championIcon(id)} alt="" loading="lazy" />
+              <span>{names.get(id) ?? ""}</span>
+            </button>
+          ))}
+          {cs.bench.length === 0 && <p class="muted">替補席目前沒有英雄</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type GridProps = {
+  champions: Champion[];
+  isBan: boolean;
+  myTurn: boolean;
+  current: number;
+};
 
 function ChampionGrid({ champions, isBan, myTurn, current }: GridProps) {
   const [query, setQuery] = useState("");
@@ -198,8 +270,11 @@ function Loadout({ cs }: { cs: CS }) {
   const [pages, setPages] = useState<PerkPage[]>([]);
   const [editing, setEditing] = useState<0 | 1 | 2>(0);
 
+  // Available spells depend on the game mode (e.g. Snowball in ARAM).
   useEffect(() => {
     api<Spell[]>("GET", "/spells").then(setSpells).catch(fail);
+  }, [cs.gameMode]);
+  useEffect(() => {
     api<PerkPage[]>("GET", "/perks/pages").then(setPages).catch(fail);
   }, []);
 
@@ -232,19 +307,21 @@ function Loadout({ cs }: { cs: CS }) {
 
   return (
     <div class="loadout">
-      <div class="spells">
-        {([1, 2] as const).map((slot) => {
-          const s = spell(slot === 1 ? spell1Id : spell2Id);
-          return (
-            <button key={slot} class="spell-slot" onClick={() => setEditing(slot)}>
-              {s ? <img src={s.iconUrl} alt="" /> : <span class="icon icon-md icon-empty" />}
-              <span>
-                <kbd>{slot === 1 ? "D" : "F"}</kbd> {s?.name ?? "未設定"}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {spells.length > 0 && (
+        <div class="spells">
+          {([1, 2] as const).map((slot) => {
+            const s = spell(slot === 1 ? spell1Id : spell2Id);
+            return (
+              <button key={slot} class="spell-slot" onClick={() => setEditing(slot)}>
+                {s ? <img src={s.iconUrl} alt="" /> : <span class="icon icon-md icon-empty" />}
+                <span>
+                  <kbd>{slot === 1 ? "D" : "F"}</kbd> {s?.name ?? "未設定"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <label class="runes">
         <span>符文頁</span>
         <select
@@ -261,7 +338,12 @@ function Loadout({ cs }: { cs: CS }) {
 
       {editing !== 0 && (
         <div class="sheet-backdrop" onClick={() => setEditing(0)}>
-          <div class="sheet" role="dialog" aria-label="選擇召喚師技能" onClick={(e) => e.stopPropagation()}>
+          <div
+            class="sheet"
+            role="dialog"
+            aria-label="選擇召喚師技能"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2>選擇 {editing === 1 ? "D" : "F"} 技能</h2>
             <div class="spell-grid">
               {spells.map((s) => (

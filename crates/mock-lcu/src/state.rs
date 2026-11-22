@@ -15,6 +15,9 @@ const FINALIZATION_MS: i64 = 15_000;
 /// Other players act this long after their turn starts.
 const BOT_DELAY_MS: i64 = 3_000;
 const READY_CHECK_SECS: f64 = 12.0;
+const ARAM_MS: i64 = 60_000;
+/// Seconds into an ARAM champ select at which a teammate rerolls.
+const ARAM_BOT_REROLLS: [i64; 2] = [4_000, 9_000];
 
 #[derive(Clone, Debug)]
 pub struct WampEvent {
@@ -38,6 +41,8 @@ struct ChampSelect {
 
 pub struct Mock {
     pub phase: &'static str,
+    /// `CLASSIC` (draft) or `ARAM`; used by the next champ select.
+    pub game_mode: &'static str,
     events: broadcast::Sender<WampEvent>,
     queue_secs: u32,
     ready_check: Option<ReadyCheck>,
@@ -58,6 +63,7 @@ impl Mock {
             .collect();
         Self {
             phase: "None",
+            game_mode: "CLASSIC",
             events,
             queue_secs: 0,
             ready_check: None,
@@ -127,6 +133,9 @@ impl Mock {
     pub fn start_champ_select(&mut self) {
         let mut session: Value = serde_json::from_str(SESSION_FIXTURE).unwrap();
         session["timer"]["adjustedTimeLeftInPhase"] = json!(STAGE_MS);
+        if self.game_mode == "ARAM" {
+            self.make_aram(&mut session);
+        }
         self.champ_select = Some(ChampSelect {
             session,
             stage: 0,
@@ -134,6 +143,104 @@ impl Mock {
         });
         self.set_phase("ChampSelect");
         self.emit_session();
+    }
+
+    /// Turns the draft fixture into an ARAM session: no actions, random
+    /// champions for the team, a bench and one reroll.
+    fn make_aram(&self, session: &mut Value) {
+        let mut pool = self.champions.clone();
+        pool.shuffle(&mut rand::thread_rng());
+        session["actions"] = json!([]);
+        session["theirTeam"] = json!([]);
+        session["bans"] = json!({ "myTeamBans": [], "theirTeamBans": [], "numBans": 0 });
+        session["benchEnabled"] = json!(true);
+        session["benchChampions"] = json!([]);
+        session["allowRerolling"] = json!(true);
+        session["rerollsRemaining"] = json!(1);
+        session["timer"]["phase"] = json!("FINALIZATION");
+        session["timer"]["adjustedTimeLeftInPhase"] = json!(ARAM_MS);
+        let local = session["localPlayerCellId"].clone();
+        for m in session["myTeam"].as_array_mut().unwrap() {
+            m["championId"] = json!(pool.pop().unwrap_or(0));
+            m["championPickIntent"] = json!(0);
+            m["assignedPosition"] = json!("");
+            if m["cellId"] == local {
+                m["spell1Id"] = json!(4);
+                m["spell2Id"] = json!(32);
+            }
+        }
+    }
+
+    /// The gameflow session, reduced to what lol-remote reads.
+    pub fn gameflow_session(&self) -> Value {
+        json!({
+            "phase": self.phase,
+            "map": { "gameMode": self.game_mode },
+            "gameData": { "queue": { "gameMode": self.game_mode } },
+        })
+    }
+
+    /// Champions held by the team or on the bench (ARAM).
+    fn aram_taken(session: &Value) -> Vec<i64> {
+        let team = session["myTeam"].as_array().into_iter().flatten();
+        let bench = session["benchChampions"].as_array().into_iter().flatten();
+        team.chain(bench)
+            .filter_map(|c| c["championId"].as_i64())
+            .collect()
+    }
+
+    /// Rerolls `cell`'s champion; the old one goes to the bench.
+    fn aram_reroll(&mut self, cell: &Value) -> Result<i64, String> {
+        let cs = self.champ_select.as_mut().ok_or("No active delegate")?;
+        let taken = Self::aram_taken(&cs.session);
+        let new = *self
+            .champions
+            .iter()
+            .filter(|id| !taken.contains(id))
+            .collect::<Vec<_>>()
+            .choose(&mut rand::thread_rng())
+            .ok_or("no champions left")?;
+        let member = cs.session["myTeam"]
+            .as_array_mut()
+            .and_then(|m| m.iter_mut().find(|m| &m["cellId"] == cell))
+            .ok_or("no such cell")?;
+        let old = member["championId"].clone();
+        member["championId"] = json!(new);
+        if let Some(bench) = cs.session["benchChampions"].as_array_mut() {
+            bench.push(json!({ "championId": old, "isPriority": false }));
+        }
+        Ok(*new)
+    }
+
+    pub fn reroll(&mut self) -> Result<(), String> {
+        let cs = self.champ_select.as_mut().ok_or("No active delegate")?;
+        if cs.session["allowRerolling"] != true {
+            return Err("rerolling not allowed".into());
+        }
+        let left = cs.session["rerollsRemaining"].as_i64().unwrap_or(0);
+        if left <= 0 {
+            return Err("no rerolls remaining".into());
+        }
+        cs.session["rerollsRemaining"] = json!(left - 1);
+        let local = cs.session["localPlayerCellId"].clone();
+        let new = self.aram_reroll(&local)?;
+        println!("rerolled into champion {new}");
+        self.emit_session();
+        Ok(())
+    }
+
+    pub fn bench_swap(&mut self, champion_id: i64) -> Result<(), String> {
+        let cs = self.champ_select.as_mut().ok_or("No active delegate")?;
+        let idx = cs.session["benchChampions"]
+            .as_array()
+            .and_then(|b| b.iter().position(|b| b["championId"] == champion_id))
+            .ok_or_else(|| format!("champion {champion_id} is not on the bench"))?;
+        let member = local_member_mut(&mut cs.session);
+        let old = std::mem::replace(&mut member["championId"], json!(champion_id));
+        cs.session["benchChampions"][idx]["championId"] = old;
+        println!("swapped with bench champion {champion_id}");
+        self.emit_session();
+        Ok(())
     }
 
     pub fn start_game(&mut self) {
@@ -361,6 +468,22 @@ impl Mock {
         }
         if !finalizing && cs.stage_elapsed_ms >= BOT_DELAY_MS {
             self.bots_act();
+        } else if cs.session["benchEnabled"] == true
+            && ARAM_BOT_REROLLS.contains(&cs.stage_elapsed_ms)
+        {
+            // A random teammate other than us rerolls, filling the bench.
+            let local = cs.session["localPlayerCellId"].clone();
+            let cell = cs.session["myTeam"].as_array().and_then(|m| {
+                m.iter()
+                    .map(|m| m["cellId"].clone())
+                    .filter(|c| *c != local)
+                    .collect::<Vec<_>>()
+                    .choose(&mut rand::thread_rng())
+                    .cloned()
+            });
+            if let Some(cell) = cell {
+                let _ = self.aram_reroll(&cell);
+            }
         }
         // The real client re-sends the session periodically; this also keeps
         // the timer in sync for clients that rely on it.

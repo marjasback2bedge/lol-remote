@@ -109,6 +109,8 @@ struct Active {
     /// Set once the current ready check has been handled; cleared when the
     /// phase leaves ReadyCheck.
     ready_check_handled: bool,
+    /// Game mode of the current champ select; fetched once per champ select.
+    game_mode: Option<String>,
 }
 
 impl Active {
@@ -118,6 +120,7 @@ impl Active {
             client,
             phase: Phase::None,
             ready_check_handled: false,
+            game_mode: None,
         }
     }
 
@@ -141,7 +144,7 @@ impl Active {
         }
         if phase == Phase::ChampSelect {
             if let Ok(session) = self.client.champ_select_session().await {
-                self.on_champ_select(Some(&session));
+                self.on_champ_select(Some(&session)).await;
             }
         }
 
@@ -151,7 +154,7 @@ impl Active {
                 event = events.recv() => match event {
                     Ok(LcuEvent::GameflowPhase(p)) => self.on_phase(p),
                     Ok(LcuEvent::ReadyCheck(rc)) => self.on_ready_check(rc),
-                    Ok(LcuEvent::ChampSelect(s)) => self.on_champ_select(s.as_deref()),
+                    Ok(LcuEvent::ChampSelect(s)) => self.on_champ_select(s.as_deref()).await,
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         tracing::warn!("dropped {n} LCU events");
                     }
@@ -197,6 +200,9 @@ impl Active {
                 s.champ_select = None;
             }
         });
+        if phase != Phase::ChampSelect {
+            self.game_mode = None;
+        }
 
         if phase == Phase::ReadyCheck {
             self.start_ready_check();
@@ -213,8 +219,22 @@ impl Active {
         }
     }
 
-    fn on_champ_select(&mut self, session: Option<&lcu::types::ChampSelectSession>) {
-        let view = session.map(|s| ChampSelectState::from_session(s, now_ms()));
+    async fn on_champ_select(&mut self, session: Option<&lcu::types::ChampSelectSession>) {
+        if session.is_none() {
+            self.game_mode = None;
+        } else if self.game_mode.is_none() {
+            let mode = match self.client.gameflow_session().await {
+                Ok(g) => g.map.game_mode,
+                Err(e) => {
+                    tracing::warn!("could not read game mode: {e}");
+                    String::new()
+                }
+            };
+            tracing::info!("champ select game mode: {mode}");
+            self.game_mode = Some(mode);
+        }
+        let mode = self.game_mode.as_deref().unwrap_or_default();
+        let view = session.map(|s| ChampSelectState::from_session(s, mode, now_ms()));
         self.ctx.update(|s| s.champ_select = view);
     }
 

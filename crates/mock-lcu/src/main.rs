@@ -111,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
 
 fn print_help() {
     println!(
-        "commands: lobby | queue (ready check in 3s) | rc | cs (champ select) | game | none | others-decline | quit"
+        "commands: lobby | queue (ready check in 3s) | rc | cs (champ select) | game | none | others-decline | mode classic|aram | quit"
     );
 }
 
@@ -127,10 +127,12 @@ fn command(app: &App, cmd: &str) -> bool {
         "game" => mock.start_game(),
         "none" => mock.set_phase("None"),
         "others-decline" => mock.others_decline(),
+        "mode classic" => mock.game_mode = "CLASSIC",
+        "mode aram" => mock.game_mode = "ARAM",
         "quit" | "exit" => return false,
         _ => print_help(),
     }
-    println!("phase = {}", mock.phase);
+    println!("phase = {}, mode = {}", mock.phase, mock.game_mode);
     true
 }
 
@@ -179,6 +181,7 @@ fn router(app: App) -> Router {
     Router::new()
         .route("/", get(websocket))
         .route("/lol-gameflow/v1/gameflow-phase", get(gameflow_phase))
+        .route("/lol-gameflow/v1/session", get(gameflow_session))
         .route("/lol-summoner/v1/current-summoner", get(current_summoner))
         .route("/lol-matchmaking/v1/ready-check", get(ready_check))
         .route("/lol-matchmaking/v1/ready-check/accept", post(accept))
@@ -193,6 +196,14 @@ fn router(app: App) -> Router {
         .route(
             "/lol-champ-select/v1/session/my-selection",
             patch(my_selection),
+        )
+        .route(
+            "/lol-champ-select/v1/session/my-selection/reroll",
+            post(reroll),
+        )
+        .route(
+            "/lol-champ-select/v1/session/bench/swap/:id",
+            post(bench_swap),
         )
         .route("/lol-perks/v1/pages", get(perk_pages))
         .route(
@@ -289,6 +300,10 @@ async fn gameflow_phase(State(app): State<App>) -> Json<Value> {
     Json(json!(app.mock.lock().unwrap().phase))
 }
 
+async fn gameflow_session(State(app): State<App>) -> Json<Value> {
+    Json(app.mock.lock().unwrap().gameflow_session())
+}
+
 async fn current_summoner() -> Json<Value> {
     Json(json!({ "gameName": "MockPlayer", "tagLine": "MOCK", "summonerLevel": 30 }))
 }
@@ -351,6 +366,24 @@ async fn my_selection(State(app): State<App>, Json(body): Json<Value>) -> ApiRes
         .lock()
         .unwrap()
         .patch_my_selection(&body)
+        .map(|()| StatusCode::NO_CONTENT.into_response())
+        .map_err(bad_request)
+}
+
+async fn reroll(State(app): State<App>) -> ApiResult {
+    app.mock
+        .lock()
+        .unwrap()
+        .reroll()
+        .map(|()| StatusCode::NO_CONTENT.into_response())
+        .map_err(bad_request)
+}
+
+async fn bench_swap(State(app): State<App>, Path(id): Path<i64>) -> ApiResult {
+    app.mock
+        .lock()
+        .unwrap()
+        .bench_swap(id)
         .map(|()| StatusCode::NO_CONTENT.into_response())
         .map_err(bad_request)
 }

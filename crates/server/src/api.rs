@@ -56,6 +56,8 @@ pub fn router() -> Router<Arc<Ctx>> {
         .route("/champ-select/hover", post(hover))
         .route("/champ-select/lock", post(lock))
         .route("/champ-select/spells", post(set_spells))
+        .route("/champ-select/bench-swap", post(bench_swap))
+        .route("/champ-select/reroll", post(reroll))
         .route("/spells", get(spells))
         .route("/perks/pages", get(perk_pages))
         .route("/perks/current", post(set_perk_page))
@@ -194,6 +196,24 @@ async fn lock(
     Ok(Json(json!({ "ok": true })))
 }
 
+async fn bench_swap(
+    State(ctx): State<Arc<Ctx>>,
+    Json(body): Json<ChampionBody>,
+) -> ApiResult<serde_json::Value> {
+    lcu(&ctx)?.bench_swap(body.champion_id).await?;
+    tracing::info!(
+        "swapped with bench champion {} from phone",
+        body.champion_id
+    );
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn reroll(State(ctx): State<Arc<Ctx>>) -> ApiResult<serde_json::Value> {
+    lcu(&ctx)?.reroll().await?;
+    tracing::info!("rerolled from phone");
+    Ok(Json(json!({ "ok": true })))
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SpellOut {
@@ -202,15 +222,25 @@ struct SpellOut {
     icon_url: String,
 }
 
+/// Spells usable in the current champ select's mode (Summoner's Rift outside
+/// champ select or when the mode is unknown).
 async fn spells(State(ctx): State<Arc<Ctx>>) -> ApiResult<Vec<SpellOut>> {
     lcu(&ctx)?;
+    let mode = ctx
+        .state
+        .borrow()
+        .champ_select
+        .as_ref()
+        .map(|cs| cs.game_mode.clone())
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| "CLASSIC".into());
     let out = ctx
         .cache
         .read()
         .unwrap()
         .spells
         .iter()
-        .filter(|s| s.game_modes.iter().any(|m| m == "CLASSIC"))
+        .filter(|s| s.game_modes.contains(&mode))
         .map(|s| SpellOut {
             id: s.id,
             name: s.name.clone(),

@@ -24,6 +24,8 @@ export type TeamSlot = {
 };
 
 export type ChampSelect = {
+  /** `CLASSIC`, `ARAM`, ...; empty if unknown. */
+  gameMode: string;
   timerMs: number;
   timerPhase: string;
   receivedAt: number;
@@ -32,6 +34,10 @@ export type ChampSelect = {
   myTeam: TeamSlot[];
   theirTeam: { championId: number }[];
   bans: { myTeam: number[]; theirTeam: number[] };
+  /** Null when the mode has no bench. */
+  bench: number[] | null;
+  /** Null when the mode doesn't allow rerolling. */
+  rerollsRemaining: number | null;
 };
 
 export type State = {
