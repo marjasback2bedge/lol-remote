@@ -526,6 +526,34 @@ a {
   min-height: 56px;
 }
 
+.bench-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.bench-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.btn-small {
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 0.95rem;
+}
+
+.bench-panel .champ[aria-busy="true"] {
+  opacity: 0.5;
+}
+
 .loadout {
   display: flex;
   flex-direction: column;

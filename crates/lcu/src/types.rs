@@ -113,6 +113,17 @@ pub struct ChampSelectSession {
     pub their_team: Vec<TeamMember>,
     pub bans: Bans,
     pub timer: Timer,
+    /// ARAM-style modes: champions anyone on the team can swap for.
+    pub bench_enabled: bool,
+    pub bench_champions: Vec<BenchChampion>,
+    pub allow_rerolling: bool,
+    pub rerolls_remaining: i64,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BenchChampion {
+    pub champion_id: i64,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -153,6 +164,20 @@ pub struct Timer {
     pub adjusted_time_left_in_phase: i64,
     /// `PLANNING`, `BAN_PICK`, `FINALIZATION`, `GAME_STARTING`.
     pub phase: String,
+}
+
+/// `/lol-gameflow/v1/session`, reduced to the game mode.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GameflowSession {
+    pub map: GameflowMap,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GameflowMap {
+    /// `CLASSIC`, `ARAM`, `CHERRY` (Arena), `URF`, ...
+    pub game_mode: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

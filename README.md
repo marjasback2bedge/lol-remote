@@ -82,7 +82,7 @@ cargo run -p lol-remote -- run --lockfile mock-lockfile
 cd web && LOLR_BACKEND=http://localhost:3000 npm run dev
 ```
 
-mock 的選角是完整的 10 人選秀：其他 9 名玩家會在輪到時自動 Ban / Pick。
+mock 的選角預設是完整的 10 人選秀：其他 9 名玩家會在輪到時自動 Ban / Pick。輸入 `mode aram` 後，下一次選角改為隨機單中：直接分配英雄、可重骰一次，隊友重骰會把英雄放上替補席。
 
 ### 檢查
 

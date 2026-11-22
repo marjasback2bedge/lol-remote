@@ -45,6 +45,8 @@ pub struct ReadyCheckState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChampSelectState {
+    /// `CLASSIC`, `ARAM`, ...; empty if the client didn't report one.
+    pub game_mode: String,
     pub timer_ms: i64,
     pub timer_phase: String,
     pub received_at: i64,
@@ -53,6 +55,10 @@ pub struct ChampSelectState {
     pub my_team: Vec<TeamSlot>,
     pub their_team: Vec<EnemySlot>,
     pub bans: BansState,
+    /// Bench champions; `None` when the mode has no bench.
+    pub bench: Option<Vec<i64>>,
+    /// `None` when the mode doesn't allow rerolling.
+    pub rerolls_remaining: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -121,9 +127,10 @@ impl ReadyCheckState {
 }
 
 impl ChampSelectState {
-    pub fn from_session(s: &ChampSelectSession, received_at: i64) -> Self {
+    pub fn from_session(s: &ChampSelectSession, game_mode: &str, received_at: i64) -> Self {
         let me = local_member(s);
         Self {
+            game_mode: game_mode.to_owned(),
             timer_ms: s.timer.adjusted_time_left_in_phase,
             timer_phase: s.timer.phase.clone(),
             received_at,
@@ -167,6 +174,14 @@ impl ChampSelectState {
                 my_team: s.bans.my_team_bans.clone(),
                 their_team: s.bans.their_team_bans.clone(),
             },
+            bench: s.bench_enabled.then(|| {
+                s.bench_champions
+                    .iter()
+                    .map(|b| b.champion_id)
+                    .filter(|&id| id > 0)
+                    .collect()
+            }),
+            rerolls_remaining: s.allow_rerolling.then_some(s.rerolls_remaining),
         }
     }
 }
@@ -214,7 +229,7 @@ mod tests {
 
     #[test]
     fn champ_select_view_from_fixture() {
-        let view = ChampSelectState::from_session(&fixture(), 42);
+        let view = ChampSelectState::from_session(&fixture(), "CLASSIC", 42);
         assert_eq!(view.received_at, 42);
         assert_eq!(view.timer_phase, "BAN_PICK");
         let action = view.my_action.unwrap();
@@ -225,6 +240,30 @@ mod tests {
         assert_eq!(view.their_team.len(), 5);
         assert_eq!(view.my_selection.position, "middle");
         assert_eq!(view.my_selection.spell1_id, 4);
+        assert!(view.bench.is_none());
+        assert!(view.rerolls_remaining.is_none());
+    }
+
+    #[test]
+    fn aram_bench_and_rerolls() {
+        let s: ChampSelectSession = serde_json::from_str(
+            r#"{
+                "localPlayerCellId": 0,
+                "actions": [],
+                "myTeam": [{"cellId": 0, "championId": 22, "assignedPosition": ""}],
+                "benchEnabled": true,
+                "benchChampions": [{"championId": 1, "isPriority": false}, {"championId": 51}],
+                "allowRerolling": true,
+                "rerollsRemaining": 1
+            }"#,
+        )
+        .unwrap();
+        let view = ChampSelectState::from_session(&s, "ARAM", 0);
+        assert_eq!(view.game_mode, "ARAM");
+        assert!(view.my_action.is_none());
+        assert_eq!(view.my_selection.champion_id, 22);
+        assert_eq!(view.bench, Some(vec![1, 51]));
+        assert_eq!(view.rerolls_remaining, Some(1));
     }
 
     #[test]
@@ -232,14 +271,17 @@ mod tests {
         let mut s = fixture();
         s.my_team[2].spell2_id = u64::MAX;
         assert_eq!(
-            ChampSelectState::from_session(&s, 0).my_selection.spell2_id,
+            ChampSelectState::from_session(&s, "CLASSIC", 0)
+                .my_selection
+                .spell2_id,
             0
         );
     }
 
     #[test]
     fn enemy_slots_only_carry_champion() {
-        let json = serde_json::to_value(ChampSelectState::from_session(&fixture(), 0)).unwrap();
+        let json =
+            serde_json::to_value(ChampSelectState::from_session(&fixture(), "CLASSIC", 0)).unwrap();
         let enemy = json["theirTeam"][0].as_object().unwrap();
         assert_eq!(enemy.keys().collect::<Vec<_>>(), ["championId"]);
     }

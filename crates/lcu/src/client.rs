@@ -5,7 +5,7 @@ use reqwest::RequestBuilder;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::types::{ChampionSummary, PerkPage, Phase, ReadyCheck, SummonerSpell};
+use crate::types::{ChampionSummary, GameflowSession, PerkPage, Phase, ReadyCheck, SummonerSpell};
 use crate::{tls, Credentials, LcuError};
 
 /// REST client for the LCU. Cheap to clone.
@@ -112,6 +112,10 @@ impl LcuClient {
 
     pub async fn gameflow_phase(&self) -> Result<Phase, LcuError> {
         self.get("/lol-gameflow/v1/gameflow-phase").await
+    }
+
+    pub async fn gameflow_session(&self) -> Result<GameflowSession, LcuError> {
+        self.get("/lol-gameflow/v1/session").await
     }
 
     pub async fn ready_check(&self) -> Result<ReadyCheck, LcuError> {

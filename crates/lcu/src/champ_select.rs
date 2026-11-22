@@ -110,6 +110,21 @@ impl LcuClient {
         .await
         .map(drop)
     }
+
+    /// Swaps the local player's champion with one from the bench (ARAM).
+    pub async fn bench_swap(&self, champion_id: i64) -> Result<(), LcuError> {
+        self.post_empty::<serde_json::Value>(&format!(
+            "/lol-champ-select/v1/session/bench/swap/{champion_id}"
+        ))
+        .await
+        .map(drop)
+    }
+
+    pub async fn reroll(&self) -> Result<(), LcuError> {
+        self.post_empty::<serde_json::Value>("/lol-champ-select/v1/session/my-selection/reroll")
+            .await
+            .map(drop)
+    }
 }
 
 #[cfg(test)]

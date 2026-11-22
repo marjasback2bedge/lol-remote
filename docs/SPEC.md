@@ -175,6 +175,9 @@ lol-remote/
 | 可 Ban 英雄 | GET | `/lol-champ-select/v1/bannable-champion-ids` |
 | Hover / Lock | PATCH | `/lol-champ-select/v1/session/actions/{actionId}` body `{ "championId": n, "completed": bool }` |
 | 召喚師技能 | PATCH | `/lol-champ-select/v1/session/my-selection` body `{ "spell1Id": n, "spell2Id": n }` |
+| 替補席交換（ARAM） | POST | `/lol-champ-select/v1/session/bench/swap/{championId}` |
+| 重骰（ARAM） | POST | `/lol-champ-select/v1/session/my-selection/reroll` |
+| 遊戲模式 | GET | `/lol-gameflow/v1/session`（讀 `map.gameMode`，每次選角抓一次） |
 | 符文頁列表 | GET | `/lol-perks/v1/pages` |
 | 目前符文頁 | GET / PUT | `/lol-perks/v1/currentpage`（PUT body 為 page id 數字） |
 | 英雄清單 | GET | `/lol-game-data/assets/v1/champion-summary.json` |
@@ -270,8 +273,10 @@ Active ──(WS 斷線 / lockfile 消失)──► Idle
 | GET | `/api/champions` | `[{ id, name, alias }]`（含 pickable / bannable 標記） |
 | POST | `/api/champ-select/hover` | body `{ championId }` |
 | POST | `/api/champ-select/lock` | body `{ championId }` |
-| GET | `/api/spells` | `[{ id, name, iconUrl }]`（只回傳一般模式可用者） |
+| GET | `/api/spells` | `[{ id, name, iconUrl }]`（只回傳目前選角模式可用者；不在選角時為一般模式） |
 | POST | `/api/champ-select/spells` | body `{ spell1Id, spell2Id }` |
+| POST | `/api/champ-select/bench-swap` | body `{ championId }` |
+| POST | `/api/champ-select/reroll` | |
 | GET | `/api/perks/pages` | `[{ id, name, isCurrent, isEditable }]` |
 | POST | `/api/perks/current` | body `{ pageId }` |
 | GET / PUT | `/api/settings` | `{ autoAccept: bool }` |
@@ -299,6 +304,7 @@ type State = {
     timer: number;                     // 秒
   };
   champSelect: null | {
+    gameMode: string;                  // CLASSIC, ARAM, CHERRY, ...；未知時為空字串
     timerMs: number;
     timerPhase: string;                // BAN_PICK, FINALIZATION, ...
     receivedAt: number;                // server 時間戳，前端自行倒數
@@ -312,6 +318,8 @@ type State = {
     myTeam: Array<{ cellId: number; championId: number; pickIntent: number; position: string; isMe: boolean }>;
     theirTeam: Array<{ championId: number }>;
     bans: { myTeam: number[]; theirTeam: number[] };
+    bench: null | number[];            // 替補席英雄；模式沒有替補席時為 null
+    rerollsRemaining: null | number;   // 不可重骰時為 null
   };
 };
 ```
@@ -399,7 +407,7 @@ Rust 端在 `server` crate 定義對應 struct，`#[serde(rename_all = "camelCas
 
 - **mock-lcu crate**：一個本機 HTTPS + WSS server（自簽憑證），模擬：
   - 寫出假 lockfile
-  - gameflow phase 依指令切換（例如 stdin 輸入 `readycheck`、`champselect`）
+  - gameflow phase 依指令切換（例如 stdin 輸入 `readycheck`、`champselect`）；`mode aram` / `mode classic` 切換下一次選角的模式
   - 回應本 spec 用到的所有 endpoint，champ select session 使用固定 fixture JSON
   - `lol-remote` 可用 `--lockfile <path>` 指向 mock，讓整個流程不開遊戲也能測。
 - Fixture：在 `crates/lcu/tests/fixtures/` 放真實擷取的 session / ready-check JSON（擷取時移除玩家名稱與 puuid）。
