@@ -1,127 +1,129 @@
 # lol-remote — Spec
 
-用手機在區網內遠端操作 League of Legends 客戶端：排到隊時內網網頁自動切換，即可在手機上接受 / 拒絕、選角、Ban、選召喚師技能與符文頁。
+English | [繁體中文](SPEC.zh-TW.md)
+
+Control the League of Legends client from your phone over the local network: when a match is found, the web page on the LAN switches automatically, and you can accept / decline, pick, ban, and choose summoner spells and rune pages from your phone.
 
 ---
 
-## 1. 目標與非目標
+## 1. Goals and non-goals
 
-### 目標
-- 使用者打開 LoL 客戶端後，本機 server 自動進入運作狀態（不需手動啟動）。
-- Ready check 出現時，已開啟的手機網頁在數秒內自動切換到接受畫面。
-- 手機透過區網網頁完成：接受 / 拒絕、Ban、Hover、Lock in、召喚師技能、符文頁切換。
-- 單一執行檔散布，支援 macOS（優先）與 Windows。
-- 首次使用以 QR code 完成手機配對，之後零設定。
+### Goals
+- When the user opens the League client, the local server starts working automatically (no manual start).
+- When a ready check appears, a phone web page that is already open switches to the accept screen within seconds.
+- From the phone's LAN web page, the user can: accept / decline, ban, hover, lock in, choose summoner spells, and switch rune pages.
+- Distributed as a single binary, supporting macOS (priority) and Windows.
+- First-time phone pairing via QR code, zero configuration afterwards.
 
-### 非目標（v1 不做）
-- 自動選角 / 自動 Ban 等替玩家做決策的功能（只保留「自動接受」開關）。
-- 對外網路存取（不做 Tailscale、雲端中繼）。
-- 原生 iOS / Android App、動態島。
-- 推播通知（使用者配對時會盯著網頁，推播是多餘的）。
-- 編輯符文頁內容（只切換既有頁面）。
-- 遊戲內（in-game）任何功能。
-
----
-
-## 2. 使用者流程
-
-```
-[開機] lol-remote daemon 常駐（閒置，幾乎不耗資源）
-   │
-[開啟 LoL] daemon 偵測到 lockfile → 連上 LCU → 進入 Active 狀態
-   │
-[排隊中] gameflow-phase = Matchmaking
-   │
-[排到] gameflow-phase = ReadyCheck
-   ├─ 若「自動接受」開啟 → 直接 accept
-   └─ 否則 → 網頁切換到 Ready Check 畫面
-   │
-[手機] 在已開啟的 http://<host>.local:3000 按接受
-   │
-[選角] gameflow-phase = ChampSelect
-   └─ 網頁即時顯示倒數、目前輪到的 action、隊伍狀態
-      → 搜尋英雄 → Hover → Lock in
-      → 選召喚師技能 D/F、選符文頁
-   │
-[進遊戲] gameflow-phase = InProgress → 網頁顯示「遊戲中」
-   │
-[關閉 LoL] lockfile 消失 → 斷線 → 回到 Idle
-```
+### Non-goals (not in v1)
+- Auto pick / auto ban or any feature that makes decisions for the player (only the "auto accept" toggle is kept).
+- Access from outside the LAN (no Tailscale, no cloud relay).
+- Native iOS / Android app, Dynamic Island.
+- Push notifications (the user is watching the page while paired, so push is redundant).
+- Editing rune page contents (only switching between existing pages).
+- Anything in-game.
 
 ---
 
-## 3. 架構
+## 2. User flow
 
 ```
-┌──────────── 使用者電腦 ────────────┐
-│                                     │
-│  LoL Client (LCU)                   │
-│   https://127.0.0.1:<port>          │
-│        ▲ REST + WSS (Basic Auth)    │
-│        │                            │
-│  lol-remote (Rust 單一執行檔)       │
-│   ├─ lcu crate: lockfile/REST/事件  │
-│   └─ server crate:                  │
-│       ├─ axum HTTP + WS  :3000 ─────┼──► 手機瀏覽器（區網）
-│       ├─ mDNS 廣播 <host>.local     │
-│       └─ 內嵌前端靜態檔             │
-└─────────────────────────────────────┘
+[Boot] lol-remote daemon runs in the background (idle, almost no resource use)
+   │
+[Open LoL] daemon detects the lockfile → connects to the LCU → enters Active state
+   │
+[Queueing] gameflow-phase = Matchmaking
+   │
+[Match found] gameflow-phase = ReadyCheck
+   ├─ If "auto accept" is on → accept immediately
+   └─ Otherwise → the web page switches to the Ready Check screen
+   │
+[Phone] Tap accept on the already open http://<host>.local:3000
+   │
+[Champ select] gameflow-phase = ChampSelect
+   └─ The page shows the countdown, the current action and team status in real time
+      → search champion → hover → lock in
+      → choose summoner spells D/F, choose rune page
+   │
+[In game] gameflow-phase = InProgress → page shows "in game"
+   │
+[Close LoL] lockfile disappears → disconnect → back to Idle
 ```
 
 ---
 
-## 4. Tech Stack
+## 3. Architecture
 
-### 後端（Rust, edition 2021, stable）
-| 用途 | Crate |
+```
+┌──────────── User's computer ────────────┐
+│                                          │
+│  LoL Client (LCU)                        │
+│   https://127.0.0.1:<port>               │
+│        ▲ REST + WSS (Basic Auth)         │
+│        │                                 │
+│  lol-remote (single Rust binary)         │
+│   ├─ lcu crate: lockfile/REST/events     │
+│   └─ server crate:                       │
+│       ├─ axum HTTP + WS  :3000 ──────────┼──► phone browser (LAN)
+│       ├─ mDNS announce <host>.local      │
+│       └─ embedded frontend static files  │
+└──────────────────────────────────────────┘
+```
+
+---
+
+## 4. Tech stack
+
+### Backend (Rust, edition 2021, stable)
+| Purpose | Crate |
 |---|---|
-| Async runtime | `tokio`（full） |
-| HTTP / WS server | `axum`（含 `ws` feature）、`tower-http`（CORS、trace） |
-| HTTP client（LCU） | `reqwest`（`rustls-tls`、`json`） |
-| LCU WebSocket | `tokio-tungstenite`（`rustls-tls-webpki-roots` 或自訂 connector） |
-| TLS 自訂設定 | `rustls` |
-| JSON | `serde`、`serde_json` |
-| 設定檔 | `toml`、`directories` |
-| 監看 lockfile | `notify` |
+| Async runtime | `tokio` (full) |
+| HTTP / WS server | `axum` (with the `ws` feature), `tower-http` (CORS, trace) |
+| HTTP client (LCU) | `reqwest` (`rustls-tls`, `json`) |
+| LCU WebSocket | `tokio-tungstenite` (`rustls-tls-webpki-roots` or a custom connector) |
+| Custom TLS config | `rustls` |
+| JSON | `serde`, `serde_json` |
+| Config file | `toml`, `directories` |
+| Lockfile watching | `notify` |
 | mDNS | `mdns-sd` |
-| 配對 QR | `qrcode`（終端機輸出） |
-| 內嵌前端 | `rust-embed` |
-| CLI | `clap`（derive） |
-| Log | `tracing`、`tracing-subscriber` |
-| 錯誤處理 | `anyhow`（server）、`thiserror`（lcu） |
-| 隨機 token | `rand` |
+| Pairing QR | `qrcode` (terminal output) |
+| Embedded frontend | `rust-embed` |
+| CLI | `clap` (derive) |
+| Logging | `tracing`, `tracing-subscriber` |
+| Error handling | `anyhow` (server), `thiserror` (lcu) |
+| Random token | `rand` |
 
-### 前端
+### Frontend
 - Vite + Preact + TypeScript
-- 不使用 UI 框架，手寫 CSS，mobile-first
-- build 產物放 `web/dist`，由 `rust-embed` 打包進執行檔
+- No UI framework, hand-written CSS, mobile-first
+- Build output goes to `web/dist` and is bundled into the binary by `rust-embed`
 
 ---
 
-## 5. Repo 結構
+## 5. Repo layout
 
 ```
 lol-remote/
 ├── Cargo.toml                # workspace
 ├── crates/
-│   ├── lcu/                  # 與 LoL 客戶端溝通（可獨立重用）
+│   ├── lcu/                  # talks to the League client (reusable on its own)
 │   │   ├── src/lib.rs
 │   │   ├── src/lockfile.rs
 │   │   ├── src/client.rs     # REST
-│   │   ├── src/events.rs     # WAMP WebSocket 訂閱
-│   │   ├── src/types.rs      # 只定義用到的欄位
+│   │   ├── src/events.rs     # WAMP WebSocket subscription
+│   │   ├── src/types.rs      # only the fields that are used
 │   │   └── src/champ_select.rs
 │   ├── server/               # binary: lol-remote
 │   │   ├── src/main.rs
 │   │   ├── src/config.rs
-│   │   ├── src/supervisor.rs # Idle/Active 狀態機
-│   │   ├── src/api.rs        # 給手機的 REST
-│   │   ├── src/ws.rs         # 給手機的 WS
+│   │   ├── src/supervisor.rs # Idle/Active state machine
+│   │   ├── src/api.rs        # REST for the phone
+│   │   ├── src/ws.rs         # WS for the phone
 │   │   ├── src/mdns.rs
 │   │   ├── src/pairing.rs    # QR
-│   │   ├── src/install.rs    # launchd / Windows 開機啟動
-│   │   └── src/assets.rs     # rust-embed + LCU 圖片 proxy
-│   └── mock-lcu/             # 開發用假 LCU server（見 §12）
+│   │   ├── src/install.rs    # launchd / Windows start at login
+│   │   └── src/assets.rs     # rust-embed + LCU image proxy
+│   └── mock-lcu/             # fake LCU server for development (see §12)
 ├── web/
 │   ├── package.json
 │   ├── vite.config.ts
@@ -134,72 +136,72 @@ lol-remote/
 ## 6. `lcu` crate
 
 ### 6.1 Lockfile
-- 預設路徑（可由設定檔覆寫）：
-  - macOS：`/Applications/League of Legends.app/Contents/LoL/lockfile`
-  - Windows：`C:\Riot Games\League of Legends\lockfile`
-- 格式：`<name>:<pid>:<port>:<password>:<protocol>`（例：`LeagueClient:12345:54321:abcXYZ:https`）
-- 解析為 `Credentials { pid, port, password, protocol }`。
-- 讀檔失敗、格式錯誤要回傳明確錯誤，不 panic。
+- Default path (can be overridden in the config file):
+  - macOS: `/Applications/League of Legends.app/Contents/LoL/lockfile`
+  - Windows: `C:\Riot Games\League of Legends\lockfile`
+- Format: `<name>:<pid>:<port>:<password>:<protocol>` (e.g. `LeagueClient:12345:54321:abcXYZ:https`)
+- Parsed into `Credentials { pid, port, password, protocol }`.
+- Read failures and malformed content must return a clear error, never panic.
 
 ### 6.2 REST client
-- Base URL：`https://127.0.0.1:{port}`
-- Auth：Basic，帳號 `riot`，密碼為 lockfile 的 password。
-- TLS：LCU 使用 Riot 自簽憑證。實作方式二選一（優先 A）：
-  - A. 內建 Riot 根憑證 `riotgames.pem` 加入 rustls root store，並因憑證 SAN 不含 127.0.0.1，自訂 `ServerCertVerifier` 僅驗證鏈、略過主機名稱。
-  - B. `danger_accept_invalid_certs(true)`，**只能**用於 127.0.0.1 的 client。
-- 方法：`get<T>`, `post<T>`, `patch<T>`, `put<T>`, `delete`，回傳 `Result<T, LcuError>`；非 2xx 時把 body 帶入錯誤。
+- Base URL: `https://127.0.0.1:{port}`
+- Auth: Basic, username `riot`, password from the lockfile.
+- TLS: the LCU uses a Riot self-signed certificate. Pick one implementation (A preferred):
+  - A. Bundle the Riot root certificate `riotgames.pem` into the rustls root store. Because the certificate's SAN does not include 127.0.0.1, use a custom `ServerCertVerifier` that only verifies the chain and skips the hostname check.
+  - B. `danger_accept_invalid_certs(true)`, **only** for the 127.0.0.1 client.
+- Methods: `get<T>`, `post<T>`, `patch<T>`, `put<T>`, `delete`, returning `Result<T, LcuError>`; on non-2xx, include the body in the error.
 
-### 6.3 事件訂閱（WAMP over WSS）
-- 連線：`wss://127.0.0.1:{port}/`，同樣帶 Basic Auth header 與相同 TLS 設定。
-- 訂閱：送出 `[5, "<eventName>"]`，需要的事件：
+### 6.3 Event subscription (WAMP over WSS)
+- Connection: `wss://127.0.0.1:{port}/`, with the same Basic Auth header and TLS config.
+- Subscribe by sending `[5, "<eventName>"]`. Required events:
   - `OnJsonApiEvent_lol-gameflow_v1_gameflow-phase`
   - `OnJsonApiEvent_lol-matchmaking_v1_ready-check`
   - `OnJsonApiEvent_lol-champ-select_v1_session`
-- 收到格式：`[8, "<eventName>", { "uri": ..., "eventType": "Create|Update|Delete", "data": ... }]`
-- 對外提供 `tokio::sync::broadcast::Receiver<LcuEvent>`，`LcuEvent` 為 enum：
+- Incoming format: `[8, "<eventName>", { "uri": ..., "eventType": "Create|Update|Delete", "data": ... }]`
+- Exposes a `tokio::sync::broadcast::Receiver<LcuEvent>`, where `LcuEvent` is an enum:
   - `GameflowPhase(Phase)`
   - `ReadyCheck(Option<ReadyCheck>)`
-  - `ChampSelect(Option<ChampSelectSession>)`（Delete 時為 None）
-- 斷線時結束 stream，由 supervisor 決定重連。
+  - `ChampSelect(Option<ChampSelectSession>)` (None on Delete)
+- On disconnect the stream ends; the supervisor decides whether to reconnect.
 
-### 6.4 使用的 Endpoints
-| 功能 | Method | Path |
+### 6.4 Endpoints used
+| Feature | Method | Path |
 |---|---|---|
-| 目前階段 | GET | `/lol-gameflow/v1/gameflow-phase` |
-| 召喚師資訊 | GET | `/lol-summoner/v1/current-summoner` |
-| Ready check 狀態 | GET | `/lol-matchmaking/v1/ready-check` |
-| 接受 | POST | `/lol-matchmaking/v1/ready-check/accept` |
-| 拒絕 | POST | `/lol-matchmaking/v1/ready-check/decline` |
-| 選角 session | GET | `/lol-champ-select/v1/session` |
-| 可選英雄 | GET | `/lol-champ-select/v1/pickable-champion-ids` |
-| 可 Ban 英雄 | GET | `/lol-champ-select/v1/bannable-champion-ids` |
+| Current phase | GET | `/lol-gameflow/v1/gameflow-phase` |
+| Summoner info | GET | `/lol-summoner/v1/current-summoner` |
+| Ready check state | GET | `/lol-matchmaking/v1/ready-check` |
+| Accept | POST | `/lol-matchmaking/v1/ready-check/accept` |
+| Decline | POST | `/lol-matchmaking/v1/ready-check/decline` |
+| Champ select session | GET | `/lol-champ-select/v1/session` |
+| Pickable champions | GET | `/lol-champ-select/v1/pickable-champion-ids` |
+| Bannable champions | GET | `/lol-champ-select/v1/bannable-champion-ids` |
 | Hover / Lock | PATCH | `/lol-champ-select/v1/session/actions/{actionId}` body `{ "championId": n, "completed": bool }` |
-| 召喚師技能 | PATCH | `/lol-champ-select/v1/session/my-selection` body `{ "spell1Id": n, "spell2Id": n }` |
-| 替補席交換（ARAM） | POST | `/lol-champ-select/v1/session/bench/swap/{championId}` |
-| 重骰（ARAM） | POST | `/lol-champ-select/v1/session/my-selection/reroll` |
-| 遊戲模式 | GET | `/lol-gameflow/v1/session`（讀 `map.gameMode`，每次選角抓一次） |
-| 符文頁列表 | GET | `/lol-perks/v1/pages` |
-| 目前符文頁 | GET / PUT | `/lol-perks/v1/currentpage`（PUT body 為 page id 數字） |
-| 英雄清單 | GET | `/lol-game-data/assets/v1/champion-summary.json` |
-| 英雄頭像 | GET | `/lol-game-data/assets/v1/champion-icons/{id}.png` |
-| 召喚師技能清單 | GET | `/lol-game-data/assets/v1/summoner-spells.json` |
-| 技能圖示 | GET | 依 summoner-spells.json 的 `iconPath` |
+| Summoner spells | PATCH | `/lol-champ-select/v1/session/my-selection` body `{ "spell1Id": n, "spell2Id": n }` |
+| Bench swap (ARAM) | POST | `/lol-champ-select/v1/session/bench/swap/{championId}` |
+| Reroll (ARAM) | POST | `/lol-champ-select/v1/session/my-selection/reroll` |
+| Game mode | GET | `/lol-gameflow/v1/session` (reads `map.gameMode`, fetched once per champ select) |
+| Rune pages | GET | `/lol-perks/v1/pages` |
+| Current rune page | GET / PUT | `/lol-perks/v1/currentpage` (PUT body is the page id as a number) |
+| Champion list | GET | `/lol-game-data/assets/v1/champion-summary.json` |
+| Champion icon | GET | `/lol-game-data/assets/v1/champion-icons/{id}.png` |
+| Summoner spell list | GET | `/lol-game-data/assets/v1/summoner-spells.json` |
+| Spell icon | GET | from `iconPath` in summoner-spells.json |
 
-> 注意：LCU 為非官方 API，欄位可能隨版本變動。`types.rs` 只定義用到的欄位，其餘 `#[serde(default)]` 或忽略未知欄位；不要 `deny_unknown_fields`。
+> Note: the LCU is an unofficial API and fields may change between versions. `types.rs` only declares the fields that are used; everything else is `#[serde(default)]` or ignored as unknown. Do not use `deny_unknown_fields`.
 
 ### 6.5 Phase enum
 `None, Lobby, Matchmaking, CheckedIntoTournament, ReadyCheck, ChampSelect, GameStart, FailedToLaunch, InProgress, Reconnect, WaitingForStats, PreEndOfGame, EndOfGame, TerminatedInError, Unknown(String)`
 
-### 6.6 選角邏輯（`champ_select.rs`）
-- 從 session 取 `localPlayerCellId`。
-- `actions` 是二維陣列，攤平後找 `actorCellId == localPlayerCellId` 的 action。
-- 「目前輪到我」= 該 action `isInProgress == true && completed == false`。
-- 提供：
+### 6.6 Champ select logic (`champ_select.rs`)
+- Read `localPlayerCellId` from the session.
+- `actions` is a 2D array; flatten it and find actions with `actorCellId == localPlayerCellId`.
+- "My turn" = that action has `isInProgress == true && completed == false`.
+- Provides:
   - `current_action(&session) -> Option<MyAction { id, kind: Pick|Ban, champion_id, completed }>`
   - `hover(action_id, champion_id)` → PATCH `completed: false`
   - `lock(action_id, champion_id)` → PATCH `completed: true`
-- 計時器：session 內 `timer.adjustedTimeLeftInPhase`（ms）與 `timer.phase`，轉給前端顯示。
-- 隊伍顯示：`myTeam[]` 的 `cellId, championId, championPickIntent, assignedPosition, spell1Id, spell2Id`；`theirTeam[]` 只顯示 `championId`。**不得顯示其他玩家名稱或戰績**（遵守 Riot 選角匿名政策）。
+- Timer: `timer.adjustedTimeLeftInPhase` (ms) and `timer.phase` from the session, passed through to the frontend.
+- Team display: `cellId, championId, championPickIntent, assignedPosition, spell1Id, spell2Id` from `myTeam[]`; only `championId` from `theirTeam[]`. **Never show other players' names or stats** (follows Riot's champ select anonymity policy).
 
 ---
 
@@ -207,91 +209,91 @@ lol-remote/
 
 ### 7.1 CLI
 ```
-lol-remote run          # 前景執行（預設）
-lol-remote pair         # 在終端機印出配對 QR code 與網址
-lol-remote install      # 安裝開機自動啟動
-lol-remote uninstall    # 移除開機自動啟動
-lol-remote config path  # 印出設定檔路徑
+lol-remote run          # run in the foreground (default)
+lol-remote pair         # print the pairing QR code and URL in the terminal
+lol-remote install      # install start at login
+lol-remote uninstall    # remove start at login
+lol-remote config path  # print the config file path
 ```
 
-### 7.2 設定檔
-- 位置：`directories::ProjectDirs("dev", "lol-remote", "lol-remote")` 的 config dir，檔名 `config.toml`。
-- 首次啟動自動產生：
+### 7.2 Config file
+- Location: the config dir of `directories::ProjectDirs("dev", "lol-remote", "lol-remote")`, file name `config.toml`.
+- Generated automatically on first run:
 ```toml
 port = 3000
-lockfile_path = ""          # 空字串 = 使用平台預設
-auth_token = "<隨機 32 字元>"
+lockfile_path = ""          # empty = use the platform default
+auth_token = "<random 32 characters>"
 auto_accept = false
-hostname = ""               # 空字串 = 使用系統 hostname
+hostname = ""               # empty = use the system hostname
 ```
-- `auto_accept` 可由網頁切換並寫回檔案。
+- `auto_accept` can be toggled from the web page and is written back to the file.
 
-### 7.3 Supervisor 狀態機
+### 7.3 Supervisor state machine
 ```
-Idle ──(lockfile 出現且可解析)──► Connecting
-Connecting ──(REST 成功 + WS 訂閱成功)──► Active
-Connecting ──(失敗)──► 等待 2s 重試（客戶端剛啟動時 API 尚未就緒，最多 60s）
-Active ──(WS 斷線 / lockfile 消失)──► Idle
+Idle ──(lockfile appears and parses)──► Connecting
+Connecting ──(REST succeeds + WS subscription succeeds)──► Active
+Connecting ──(failure)──► retry after 2s (the API isn't ready right after the client starts; up to 60s)
+Active ──(WS disconnects / lockfile disappears)──► Idle
 ```
-- Idle 時：用 `notify` 監看 lockfile 所在目錄；若平台事件不可靠，fallback 每 3 秒輪詢。
-- HTTP server 在 Idle 時也保持運作，前端顯示「等待 LoL 客戶端」。
-- 進入 Active 時：抓一次 gameflow-phase、champion-summary、summoner-spells、perks pages 快取在記憶體。
-- macOS：Active 期間 spawn `caffeinate -i -w <lol_pid>` 防止睡眠，離開 Active 時 kill。
+- While Idle: watch the lockfile's directory with `notify`; if platform events are unreliable, fall back to polling every 3 seconds.
+- The HTTP server keeps running while Idle; the frontend shows "waiting for the League client".
+- On entering Active: fetch gameflow-phase, champion-summary, summoner-spells and perks pages once and cache them in memory.
+- macOS: while Active, spawn `caffeinate -i -w <lol_pid>` to prevent sleep, and kill it when leaving Active.
 
-### 7.4 Ready check 處理
-- 收到 phase = `ReadyCheck`（或 ready-check 事件 `state == "InProgress"` 且 `playerResponse == "None"`）時：
-  - `auto_accept == true` → 立即 POST accept。
-  - 否則 → 只更新 state，由網頁顯示 Ready Check 畫面。
-- 同一次 ready check 只自動接受一次（用 phase 轉換去重）。
+### 7.4 Ready check handling
+- When phase = `ReadyCheck` is received (or a ready-check event with `state == "InProgress"` and `playerResponse == "None"`):
+  - `auto_accept == true` → POST accept immediately.
+  - Otherwise → only update the state; the web page shows the Ready Check screen.
+- Auto accept happens only once per ready check (deduplicated by phase transitions).
 
 ### 7.5 mDNS
-- 以 `mdns-sd` 廣播 `_http._tcp`，instance name `lol-remote`，hostname 使用系統 hostname + `.local`。
-- macOS 系統本身已提供 `<hostname>.local` 解析，mDNS 廣播為輔助（Windows 需要）。
+- Announce `_http._tcp` with `mdns-sd`, instance name `lol-remote`, hostname = system hostname + `.local`.
+- macOS already resolves `<hostname>.local` itself; the mDNS announcement is a supplement (needed on Windows).
 
-### 7.6 配對
-- `lol-remote pair` 與首次啟動時，在終端機印出：
-  - 網址：`http://<host>.local:3000/?t=<token>` 與 `http://<LAN IP>:3000/?t=<token>`
-  - 一個 QR code（內容為上述 IP 網址）
+### 7.6 Pairing
+- On `lol-remote pair` and on first run, print in the terminal:
+  - URLs: `http://<host>.local:3000/?t=<token>` and `http://<LAN IP>:3000/?t=<token>`
+  - A QR code (containing the IP URL above)
 
-### 7.7 安全
-- 只綁定 `0.0.0.0:<port>`，但所有 `/api/*` 與 `/ws` 需驗證 token：
-  - Header `Authorization: Bearer <token>`，或
-  - Cookie `lolr_token`（前端首次以 `?t=` 進入時寫入 cookie，並以 `history.replaceState` 移除 URL 中的 token）。
-- token 比對使用 constant-time 比較。
-- 永遠不把 LCU 的 password / port 傳給前端。
-- 前端可呼叫的 LCU 操作限定為下方 API 列出的項目，**不提供任意 LCU proxy**。
-- 圖片 proxy 只允許 `/lol-game-data/assets/` 前綴。
+### 7.7 Security
+- Binds to `0.0.0.0:<port>`, but every `/api/*` and `/ws` request must present the token:
+  - Header `Authorization: Bearer <token>`, or
+  - Cookie `lolr_token` (written when the frontend is first opened with `?t=`; the token is then removed from the URL with `history.replaceState`).
+- Token comparison is constant-time.
+- Never send the LCU password / port to the frontend.
+- The LCU operations the frontend can trigger are limited to the API listed below; **there is no generic LCU proxy**.
+- The image proxy only allows the `/lol-game-data/assets/` prefix.
 
-### 7.8 給手機的 HTTP API
-所有回應 JSON；錯誤格式 `{ "error": "message" }`。
+### 7.8 HTTP API for the phone
+All responses are JSON; error format `{ "error": "message" }`.
 
-| Method | Path | 說明 |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/state` | 完整狀態快照（見 §8） |
-| POST | `/api/ready-check/accept` | 接受 |
-| POST | `/api/ready-check/decline` | 拒絕 |
-| GET | `/api/champions` | `[{ id, name, alias }]`（含 pickable / bannable 標記） |
+| GET | `/api/state` | Full state snapshot (see §8) |
+| POST | `/api/ready-check/accept` | Accept |
+| POST | `/api/ready-check/decline` | Decline |
+| GET | `/api/champions` | `[{ id, name, alias }]` (with pickable / bannable flags) |
 | POST | `/api/champ-select/hover` | body `{ championId }` |
 | POST | `/api/champ-select/lock` | body `{ championId }` |
-| GET | `/api/spells` | `[{ id, name, iconUrl }]`（只回傳目前選角模式可用者；不在選角時為一般模式） |
+| GET | `/api/spells` | `[{ id, name, iconUrl }]` (only spells usable in the current champ select's mode; Summoner's Rift when not in champ select) |
 | POST | `/api/champ-select/spells` | body `{ spell1Id, spell2Id }` |
 | POST | `/api/champ-select/bench-swap` | body `{ championId }` |
 | POST | `/api/champ-select/reroll` | |
 | GET | `/api/perks/pages` | `[{ id, name, isCurrent, isEditable }]` |
 | POST | `/api/perks/current` | body `{ pageId }` |
 | GET / PUT | `/api/settings` | `{ autoAccept: bool }` |
-| GET | `/assets/lcu/*path` | 代理 LCU 圖片，加 `Cache-Control: max-age=86400` |
-| GET | `/*` | 前端靜態檔（SPA fallback 到 index.html） |
+| GET | `/assets/lcu/*path` | Proxies LCU images, adds `Cache-Control: max-age=86400` |
+| GET | `/*` | Frontend static files (SPA fallback to index.html) |
 
-### 7.9 給手機的 WebSocket `/ws`
-- Server → Client，JSON，每則帶 `type`：
-  - `{ "type": "state", "data": State }`：連線時與任何變動時送出完整快照（簡單優先，v1 不做 diff）。
-- Client → Server：v1 不需要（操作一律走 REST）。
-- 每 20 秒送 ping。
+### 7.9 WebSocket for the phone `/ws`
+- Server → client, JSON, each message has a `type`:
+  - `{ "type": "state", "data": State }`: the full snapshot, sent on connect and on every change (simplicity first; no diffs in v1).
+- Client → server: not needed in v1 (all actions go through REST).
+- Ping every 20 seconds.
 
 ---
 
-## 8. State 模型（前後端共用）
+## 8. State model (shared by frontend and backend)
 
 ```ts
 type State = {
@@ -301,16 +303,16 @@ type State = {
   readyCheck: null | {
     state: string;                     // InProgress, ...
     playerResponse: string;            // None | Accepted | Declined
-    timer: number;                     // 秒
+    timer: number;                     // seconds
   };
   champSelect: null | {
-    gameMode: string;                  // CLASSIC, ARAM, CHERRY, ...；未知時為空字串
+    gameMode: string;                  // CLASSIC, ARAM, CHERRY, ...; empty string if unknown
     timerMs: number;
     timerPhase: string;                // BAN_PICK, FINALIZATION, ...
-    receivedAt: number;                // server 時間戳，前端自行倒數
+    receivedAt: number;                // server timestamp; the frontend counts down locally
     myAction: null | {
       kind: "pick" | "ban";
-      championId: number;              // 0 = 未選
+      championId: number;              // 0 = none selected
       completed: boolean;
       isMyTurn: boolean;
     };
@@ -318,109 +320,109 @@ type State = {
     myTeam: Array<{ cellId: number; championId: number; pickIntent: number; position: string; isMe: boolean }>;
     theirTeam: Array<{ championId: number }>;
     bans: { myTeam: number[]; theirTeam: number[] };
-    bench: null | number[];            // 替補席英雄；模式沒有替補席時為 null
-    rerollsRemaining: null | number;   // 不可重骰時為 null
+    bench: null | number[];            // bench champions; null when the mode has no bench
+    rerollsRemaining: null | number;   // null when rerolling isn't allowed
   };
 };
 ```
-Rust 端在 `server` crate 定義對應 struct，`#[serde(rename_all = "camelCase")]`。
+The `server` crate defines matching Rust structs with `#[serde(rename_all = "camelCase")]`.
 
 ---
 
-## 9. 前端（`web/`）
+## 9. Frontend (`web/`)
 
-### 9.1 畫面
-依 `state.connection` 與 `state.phase` 自動切換，不需路由：
+### 9.1 Screens
+Switches automatically based on `state.connection` and `state.phase`; no routing needed:
 
-1. **等待中**（idle / connecting）：「等待 LoL 客戶端啟動」。
-2. **大廳 / 排隊中**：顯示目前階段、`自動接受` 開關。
-3. **Ready Check**：全螢幕兩顆大按鈕「接受」（綠）/「拒絕」（灰），倒數條；已接受後顯示「已接受，等待其他玩家」。
-4. **選角**：
-   - 頂部：倒數秒數（依 `timerMs` 與 `receivedAt` 本地遞減）、目前是 Ban 還是 Pick、是否輪到我。
-   - 我方隊伍列：5 格頭像 + 位置；對方 5 格頭像（只有英雄）。
-   - 英雄選擇：搜尋框（比對 name 與 alias，支援中文名稱）+ 頭像網格；不可選者灰階。點擊 = hover，再按底部「Lock in」確認。
-   - 召喚師技能：兩格（D / F），點擊開啟技能選擇器。
-   - 符文頁：下拉選單。
-5. **遊戲中**：「遊戲進行中」。
+1. **Waiting** (idle / connecting): "Waiting for the League client to start".
+2. **Lobby / queueing**: shows the current phase and the `auto accept` toggle.
+3. **Ready Check**: full screen with two large buttons, "Accept" (green) / "Decline" (gray), and a countdown bar; after accepting, shows "Accepted, waiting for other players".
+4. **Champ select**:
+   - Top: countdown in seconds (decremented locally from `timerMs` and `receivedAt`), whether it's a ban or a pick, and whether it's my turn.
+   - My team row: 5 portraits + positions; enemy team: 5 portraits (champion only).
+   - Champion picker: search box (matches name and alias, supports Chinese names) + portrait grid; unavailable champions are grayed out. Tap = hover, then confirm with the "Lock in" button at the bottom.
+   - Summoner spells: two slots (D / F); tapping one opens the spell picker.
+   - Rune page: dropdown.
+5. **In game**: "Game in progress".
 
-### 9.2 要求
-- Mobile-first，觸控目標至少 48px，支援深色模式（預設深色）。
-- WebSocket 斷線自動重連（指數退避，上限 5 秒），斷線時頂部顯示提示條。
-- 所有操作按鈕在請求中顯示 loading 並防止重複點擊；失敗顯示 toast。
-- 圖片走 `/assets/lcu/...`。
-- 不需 service worker，不需 PWA manifest（v1）。
+### 9.2 Requirements
+- Mobile-first, touch targets at least 48px, dark mode supported (dark by default).
+- WebSocket reconnects automatically on disconnect (exponential backoff, capped at 5 seconds); a banner at the top is shown while disconnected.
+- Every action button shows a loading state while its request runs and prevents double taps; failures show a toast.
+- Images go through `/assets/lcu/...`.
+- No service worker and no PWA manifest (v1).
 
 ---
 
-## 10. 自動啟動（`install`）
+## 10. Start at login (`install`)
 
 ### macOS
-- 寫入 `~/Library/LaunchAgents/dev.lol-remote.plist`：
-  - `ProgramArguments`: [執行檔絕對路徑, "run"]
-  - `RunAtLoad: true`、`KeepAlive: true`
-  - `StandardOutPath` / `StandardErrorPath` 指向 log 目錄
-- 執行 `launchctl bootstrap gui/$(id -u) <plist>`；`uninstall` 用 `bootout` 並刪檔。
-- Daemon 常駐、在 Idle 狀態等待 lockfile，達成「打開 LoL 就啟動」的效果。
+- Write `~/Library/LaunchAgents/dev.lol-remote.plist`:
+  - `ProgramArguments`: [absolute path of the binary, "run"]
+  - `RunAtLoad: true`, `KeepAlive: true`
+  - `StandardOutPath` / `StandardErrorPath` point to the log directory
+- Run `launchctl bootstrap gui/$(id -u) <plist>`; `uninstall` uses `bootout` and deletes the file.
+- The daemon stays resident and waits for the lockfile in the Idle state, which gives the "starts when LoL opens" behavior.
 
 ### Windows
-- 在 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 新增值 `lol-remote` = `"<exe>" run`。
-- 以 `windows_subsystem = "windows"` 編譯一個無視窗版本，或文件說明。
+- Add a value `lol-remote` = `"<exe>" run` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- Either build a windowless version with `windows_subsystem = "windows"`, or document the console window.
 
 ---
 
-## 11. Milestones 與驗收標準
+## 11. Milestones and acceptance criteria
 
-### M1 — LCU 基礎
-- [ ] 解析 lockfile（含單元測試：正常、缺欄位、空檔）。
-- [ ] REST client 能 GET `/lol-gameflow/v1/gameflow-phase`。
-- [ ] WS 訂閱 gameflow-phase，終端機印出階段變化。
-- 驗收：開 LoL → 進大廳 → 排隊，終端機依序印出 `Lobby → Matchmaking`。
+### M1 — LCU basics
+- [ ] Parse the lockfile (with unit tests: normal, missing fields, empty file).
+- [ ] REST client can GET `/lol-gameflow/v1/gameflow-phase`.
+- [ ] WS subscription to gameflow-phase; the terminal prints phase changes.
+- Acceptance: open LoL → enter lobby → queue; the terminal prints `Lobby → Matchmaking` in order.
 
 ### M2 — Ready check
-- [ ] Supervisor 狀態機（Idle/Connecting/Active）。
-- [ ] Ready check 偵測與去重。
-- [ ] `auto_accept`。
-- 驗收：排到隊時終端機印出 ReadyCheck，`auto_accept` 開啟時自動接受；關閉並重開 LoL 後仍能運作。
+- [ ] Supervisor state machine (Idle/Connecting/Active).
+- [ ] Ready check detection and deduplication.
+- [ ] `auto_accept`.
+- Acceptance: when a match is found the terminal prints ReadyCheck, and it accepts automatically when `auto_accept` is on; still works after closing and reopening LoL.
 
-### M3 — 內網網頁（接受）
-- [ ] axum server、token 驗證、rust-embed、`/api/state`、`/ws`。
-- [ ] 前端「等待中 / 大廳 / Ready Check」三個畫面。
-- [ ] mDNS、`pair` QR code。
-- 驗收：手機掃 QR 進入網頁，ready check 時畫面自動切換，按接受成功。
+### M3 — LAN web page (accept)
+- [ ] axum server, token auth, rust-embed, `/api/state`, `/ws`.
+- [ ] Frontend "waiting / lobby / Ready Check" screens.
+- [ ] mDNS, `pair` QR code.
+- Acceptance: scan the QR code with the phone to open the page; the screen switches automatically on ready check, and tapping accept succeeds.
 
-### M4 — 選角
-- [ ] champ select 解析、hover / lock、ban。
-- [ ] 召喚師技能、符文頁切換。
-- [ ] 圖片 proxy。
-- [ ] 前端選角畫面。
-- 驗收：在一般對戰（盲選與選秀）與積分選秀中，能從手機完成 ban、pick、lock、換技能、換符文頁。
+### M4 — Champ select
+- [ ] Champ select parsing, hover / lock, ban.
+- [ ] Summoner spells, rune page switching.
+- [ ] Image proxy.
+- [ ] Frontend champ select screen.
+- Acceptance: in normal games (blind pick and draft) and ranked draft, ban, pick, lock, change spells and change rune page can all be done from the phone.
 
-### M5 — 散布
-- [ ] `install` / `uninstall`（macOS 必做，Windows 次之）。
-- [ ] `caffeinate`。
-- [ ] GitHub Actions：build macOS（arm64 + x86_64 universal）與 Windows 執行檔；前端先 build 再 cargo build。
-- [ ] README：安裝、配對、已知限制、免責聲明。
-
----
-
-## 12. 開發與測試
-
-- **mock-lcu crate**：一個本機 HTTPS + WSS server（自簽憑證），模擬：
-  - 寫出假 lockfile
-  - gameflow phase 依指令切換（例如 stdin 輸入 `readycheck`、`champselect`）；`mode aram` / `mode classic` 切換下一次選角的模式
-  - 回應本 spec 用到的所有 endpoint，champ select session 使用固定 fixture JSON
-  - `lol-remote` 可用 `--lockfile <path>` 指向 mock，讓整個流程不開遊戲也能測。
-- Fixture：在 `crates/lcu/tests/fixtures/` 放真實擷取的 session / ready-check JSON（擷取時移除玩家名稱與 puuid）。
-- 單元測試：lockfile 解析、`current_action` 判斷（pick / ban / 非我回合 / 已完成）、State 轉換。
-- `cargo clippy -- -D warnings`、`cargo fmt --check` 必須通過。
+### M5 — Distribution
+- [ ] `install` / `uninstall` (macOS required, Windows second).
+- [ ] `caffeinate`.
+- [ ] GitHub Actions: build macOS (arm64 + x86_64 universal) and Windows binaries; build the frontend before cargo build.
+- [ ] README: installation, pairing, known limitations, disclaimer.
 
 ---
 
-## 13. 已知限制與注意事項
+## 12. Development and testing
 
-- LCU 為非官方、未承諾穩定的 API，客戶端改版可能導致功能失效。
-- Riot 開發者政策禁止「替玩家做決策」的應用；本工具只轉發使用者在手機上的操作，「自動接受」為唯一自動化項目。公開發布前應查閱 Riot 最新的第三方應用政策。
-- 選角期間不得顯示其他玩家的名稱或戰績。
-- Ready check 僅約 10 秒，手機網頁需保持開啟；建議使用者在離開座位時開啟「自動接受」。
-- 手機必須與電腦在同一區網。
-- Token 在區網中以明文 HTTP 傳輸，僅適用於信任的家用網路。
+- **mock-lcu crate**: a local HTTPS + WSS server (self-signed certificate) that simulates:
+  - Writing a fake lockfile
+  - Switching gameflow phase on command (e.g. typing `readycheck` or `champselect` on stdin); `mode aram` / `mode classic` switches the mode of the next champ select
+  - Answering every endpoint this spec uses; the champ select session uses a fixed fixture JSON
+  - `lol-remote` can point at the mock with `--lockfile <path>`, so the whole flow can be tested without the game.
+- Fixtures: put real captured session / ready-check JSON in `crates/lcu/tests/fixtures/` (remove player names and puuids when capturing).
+- Unit tests: lockfile parsing, `current_action` (pick / ban / not my turn / completed), State conversion.
+- `cargo clippy -- -D warnings` and `cargo fmt --check` must pass.
+
+---
+
+## 13. Known limitations and caveats
+
+- The LCU is an unofficial API with no stability guarantee; client updates may break features.
+- Riot's developer policy prohibits apps that "make decisions for the player"; this tool only relays the actions the user takes on the phone, and "auto accept" is the only automation. Check Riot's latest third-party application policy before releasing publicly.
+- Other players' names or stats must not be shown during champ select.
+- The ready check only lasts about 10 seconds, so the phone page must stay open; users should turn on "auto accept" when stepping away.
+- The phone must be on the same LAN as the computer.
+- The token travels over plain HTTP on the LAN, so this is only suitable for a trusted home network.
