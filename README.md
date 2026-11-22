@@ -1,104 +1,106 @@
 # lol-remote
 
-用手機在區網內遠端操作 League of Legends 客戶端：排到隊時內網網頁自動切換，即可在手機上接受 / 拒絕、Ban、選角、選召喚師技能與切換符文頁。
+English | [繁體中文](README.zh-TW.md)
 
-完整規格見 [`docs/SPEC.md`](docs/SPEC.md)。
+Control the League of Legends client from your phone over your local network. When a match is found, the web page on your phone switches automatically, so you can accept or decline, ban, pick your champion, choose summoner spells and switch rune pages from your phone.
 
-## 運作方式
+The full specification is in [`docs/SPEC.md`](docs/SPEC.md).
+
+## How it works
 
 ```
-LoL 客戶端 (LCU, https://127.0.0.1:<port>)
+LoL client (LCU, https://127.0.0.1:<port>)
       ▲  REST + WAMP/WSS
-lol-remote（單一執行檔，常駐）
-      └─ HTTP + WebSocket :3000 ──► 手機瀏覽器（同一區網）
+lol-remote (single binary, runs in the background)
+      └─ HTTP + WebSocket :3000 ──► phone browser (same LAN)
 ```
 
-lol-remote 會監看 LoL 的 lockfile：客戶端一開啟就自動連上，關閉後回到閒置狀態等待下次開啟。
+lol-remote watches the League client's lockfile. It connects as soon as the client starts, and goes back to idle when the client closes, waiting for the next launch.
 
-## 安裝
+## Installation
 
-### 下載預先編譯版本
+### Download a prebuilt binary
 
-到 [Releases](https://github.com/marjasback2bedge/lol-remote/releases) 下載最新版：
+Get the latest version from [Releases](https://github.com/marjasback2bedge/lol-remote/releases):
 
-- macOS（Intel / Apple Silicon 通用）：`lol-remote-macos-universal.tar.gz`
+- macOS (universal, Intel and Apple Silicon): `lol-remote-macos-universal.tar.gz`
   ```sh
   tar -xzf lol-remote-macos-universal.tar.gz
-  xattr -d com.apple.quarantine lol-remote   # 執行檔未簽章，需移除隔離標記
+  xattr -d com.apple.quarantine lol-remote   # the binary is unsigned, so remove the quarantine flag
   ./lol-remote run
   ```
-- Windows：`lol-remote-windows.exe`（未簽章，SmartScreen 警告時選「其他資訊 → 仍要執行」）
+- Windows: `lol-remote-windows.exe` (unsigned; if SmartScreen warns you, choose "More info → Run anyway")
 
-### 從原始碼編譯
+### Build from source
 
-需要：Rust（stable）、Node.js 18+。
+Requires Rust (stable) and Node.js 18+.
 
 ```sh
-cd web && npm ci && npm run build && cd ..   # 先 build 前端（會被內嵌進執行檔）
+cd web && npm ci && npm run build && cd ..   # build the frontend first (it is embedded into the binary)
 cargo build --release -p lol-remote
 ./target/release/lol-remote run
 ```
 
-首次執行會建立設定檔並在終端機印出配對 QR code。
+The first run creates a config file and prints a pairing QR code in the terminal.
 
-### 開機自動啟動
+### Start at login
 
 ```sh
 ./target/release/lol-remote install     # macOS: ~/Library/LaunchAgents/dev.lol-remote.plist
 ./target/release/lol-remote uninstall
 ```
 
-- macOS：以 LaunchAgent 常駐（`RunAtLoad` + `KeepAlive`），log 位於 `~/Library/Application Support/dev.lol-remote.lol-remote/logs/`。客戶端執行期間會以 `caffeinate` 防止電腦睡眠。
-- Windows：寫入 `HKCU\...\CurrentVersion\Run`。目前執行時會顯示主控台視窗。
+- macOS: runs as a LaunchAgent (`RunAtLoad` + `KeepAlive`). Logs are in `~/Library/Application Support/dev.lol-remote.lol-remote/logs/`. While the League client is running, `caffeinate` keeps the computer awake.
+- Windows: adds an entry to `HKCU\...\CurrentVersion\Run`. A console window is currently shown while it runs.
 
-`install` 記錄的是執行檔目前的絕對路徑，搬移執行檔後請重新執行 `install`。
+`install` records the binary's current absolute path. If you move the binary, run `install` again.
 
-## 配對
+## Pairing
 
 ```sh
 lol-remote pair
 ```
 
-用手機掃 QR code，開啟 `http://<區網 IP>:3000/?t=<token>`。token 會存進 cookie，之後直接開 `http://<電腦名稱>.local:3000` 即可。排隊時讓網頁保持開啟，找到對戰會自動切換到接受畫面。
+Scan the QR code with your phone to open `http://<LAN IP>:3000/?t=<token>`. The token is saved in a cookie, so afterwards you can simply open `http://<computer name>.local:3000`. Keep the page open while queueing; when a match is found it switches to the accept screen automatically.
 
-## 設定檔
+## Configuration
 
-`lol-remote config path` 會印出位置（macOS 為 `~/Library/Application Support/dev.lol-remote.lol-remote/config.toml`）。
+`lol-remote config path` prints the config file location (on macOS: `~/Library/Application Support/dev.lol-remote.lol-remote/config.toml`).
 
-| 欄位 | 預設 | 說明 |
+| Field | Default | Description |
 |---|---|---|
-| `port` | `3000` | 網頁埠號 |
-| `lockfile_path` | `""` | 空字串 = 平台預設路徑 |
-| `auth_token` | 隨機 32 字元 | 手機存取權杖 |
-| `auto_accept` | `false` | 可在網頁切換 |
-| `hostname` | `""` | 空字串 = 系統名稱 |
+| `port` | `3000` | Web server port |
+| `lockfile_path` | `""` | Empty = platform default path |
+| `auth_token` | random 32 characters | Access token for the phone |
+| `auto_accept` | `false` | Can be toggled from the web page |
+| `hostname` | `""` | Empty = system name |
 
-## 開發
+## Development
 
 ```
-crates/lcu        與 LCU 溝通：lockfile、REST、WAMP 事件、選角邏輯
-crates/server     lol-remote 執行檔：狀態機、API、WebSocket、mDNS
-crates/mock-lcu   假的 LCU（自簽 HTTPS + WSS），不用開遊戲也能測整個流程
-web/              Vite + Preact + TypeScript 前端
+crates/lcu        Talks to the LCU: lockfile, REST, WAMP events, champ select logic
+crates/server     The lol-remote binary: state machine, API, WebSocket, mDNS
+crates/mock-lcu   A fake LCU (self-signed HTTPS + WSS) to test the whole flow without the game
+web/              Vite + Preact + TypeScript frontend
 ```
 
-### 用 mock-lcu 測試
+### Testing with mock-lcu
 
 ```sh
-# 終端機 1：假客戶端，會寫出 ./mock-lockfile
+# Terminal 1: fake client, writes ./mock-lockfile
 cargo run -p mock-lcu
-#   指令：lobby | queue（3 秒後 ready check）| rc | cs（選角）| game | none | others-decline | quit
+#   commands: lobby | queue (ready check in 3s) | rc | cs (champ select) | game | none | others-decline | mode classic|aram | quit
 
-# 終端機 2
+# Terminal 2
 cargo run -p lol-remote -- run --lockfile mock-lockfile
 
-# 前端熱更新（選用）：http://localhost:5173/?t=<token>
+# Frontend hot reload (optional): http://localhost:5173/?t=<token>
 cd web && LOLR_BACKEND=http://localhost:3000 npm run dev
 ```
 
-mock 的選角預設是完整的 10 人選秀：其他 9 名玩家會在輪到時自動 Ban / Pick。輸入 `mode aram` 後，下一次選角改為隨機單中：直接分配英雄、可重骰一次，隊友重骰會把英雄放上替補席。
+By default the mock champ select is a full 10-player draft: the other 9 players ban and pick automatically on their turns. After `mode aram`, the next champ select is ARAM instead: champions are assigned directly, you get one reroll, and teammates' rerolls put champions on the bench.
 
-### 檢查
+### Checks
 
 ```sh
 cargo fmt --all --check
@@ -107,31 +109,31 @@ cargo test --workspace
 cd web && npm run typecheck
 ```
 
-CI（`.github/workflows/build.yml`）會跑上述檢查，並產出 macOS universal（arm64 + x86_64）與 Windows 執行檔。
+CI (`.github/workflows/build.yml`) runs these checks and builds a macOS universal (arm64 + x86_64) binary and a Windows binary.
 
-### 發布版本
+### Publishing a release
 
-在 `main` 上推送 `v*` tag，CI 會建置並建立 GitHub Release，附上兩個執行檔：
+Push a `v*` tag on `main`. CI builds both binaries and creates a GitHub Release with them attached:
 
 ```sh
 git checkout main && git pull
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-## 安全性
+## Security
 
-- 所有 `/api/*`、`/ws`、`/assets/lcu/*` 都需要 token（`Authorization: Bearer` 或 `lolr_token` cookie），以 constant-time 比對。
-- LCU 的密碼與埠號不會傳給手機；手機只能呼叫上表列出的操作，沒有任意 LCU proxy；圖片 proxy 只允許 `/lol-game-data/assets/`。
-- 區網內為明文 HTTP，**只適用於信任的家用網路**。
+- Every `/api/*`, `/ws` and `/assets/lcu/*` request requires the token (`Authorization: Bearer` or the `lolr_token` cookie), compared in constant time.
+- The LCU password and port are never sent to the phone. The phone can only call the operations listed in the spec (§7.8); there is no generic LCU proxy, and the image proxy only allows `/lol-game-data/assets/`.
+- Traffic on the LAN is plain HTTP, so **use it only on a trusted home network**.
 
-## 已知限制
+## Known limitations
 
-- LCU 是非官方、未承諾穩定的 API，客戶端改版可能讓功能失效。
-- 與 LCU 的 TLS 採用規格中的方案 B：只對 `127.0.0.1` 略過憑證驗證（尚未內建 Riot 根憑證）。
-- Ready check 只有約 10 秒，排隊時請讓手機網頁保持開啟；離開座位時建議開啟「自動接受」。
-- 手機必須與電腦在同一個區網。
-- 尚未在真實客戶端上驗收（M1–M4 的驗收步驟需要實際開遊戲）。
+- The LCU API is unofficial and not guaranteed to be stable; client updates may break features.
+- TLS to the LCU uses option B from the spec: certificate verification is skipped for `127.0.0.1` only (the Riot root certificate is not bundled yet).
+- The ready check only lasts about 10 seconds, so keep the page open on your phone while queueing. Turn on auto accept if you step away.
+- Your phone must be on the same local network as the computer.
+- Not yet verified against a real client (the M1–M4 acceptance steps require actually playing).
 
-## 免責聲明
+## Disclaimer
 
-本專案與 Riot Games 無關，未經 Riot Games 認可。League of Legends 為 Riot Games, Inc. 的商標。lol-remote 只轉發使用者在手機上的操作，「自動接受」是唯一的自動化功能；選角時不顯示其他玩家的名稱或戰績。公開散布前請查閱 Riot 最新的第三方應用政策。
+This project is not affiliated with or endorsed by Riot Games. League of Legends is a trademark of Riot Games, Inc. lol-remote only relays the actions you take on your phone; auto accept is its only automation, and champ select never shows other players' names or stats. Check Riot's latest third-party application policy before distributing it publicly.
